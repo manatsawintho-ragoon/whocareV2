@@ -8,7 +8,6 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [userType, setUserType] = useState('thai');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
@@ -175,19 +174,12 @@ const LoginPage = () => {
                 <i className="fa-solid fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-grey dark:text-white/40 text-sm" />
                 <input
                   name="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type="password"
                   value={form.password}
                   onChange={handleChange}
                   placeholder={userType === 'thai' ? 'กรอกรหัสผ่าน' : 'Enter password'}
-                  className="w-full pl-10 pr-12 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-grey hover:text-primary transition-colors cursor-pointer"
-                >
-                  <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} text-sm`} />
-                </button>
               </div>
             </div>
 

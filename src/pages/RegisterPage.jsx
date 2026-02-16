@@ -13,8 +13,6 @@ const RegisterPage = () => {
   const { login } = useAuth();
   const [step, setStep] = useState(1);
   const [userType, setUserType] = useState('thai');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
@@ -326,19 +324,12 @@ const RegisterPage = () => {
                     <i className="fa-solid fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-grey dark:text-white/40 text-sm" />
                     <input
                       name="password"
-                      type={showPassword ? 'text' : 'password'}
+                      type="password"
                       value={form.password}
                       onChange={handleChange}
                       placeholder={isThai ? 'อย่างน้อย 8 ตัวอักษร' : 'At least 8 characters'}
-                      className="w-full pl-10 pr-12 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-grey hover:text-primary transition-colors cursor-pointer"
-                    >
-                      <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} text-sm`} />
-                    </button>
                   </div>
                 </div>
 
@@ -351,19 +342,12 @@ const RegisterPage = () => {
                     <i className="fa-solid fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-grey dark:text-white/40 text-sm" />
                     <input
                       name="confirmPassword"
-                      type={showConfirmPassword ? 'text' : 'password'}
+                      type="password"
                       value={form.confirmPassword}
                       onChange={handleChange}
                       placeholder={isThai ? 'กรอกรหัสผ่านอีกครั้ง' : 'Re-enter password'}
-                      className="w-full pl-10 pr-12 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 dark:placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-grey hover:text-primary transition-colors cursor-pointer"
-                    >
-                      <i className={`fa-solid ${showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'} text-sm`} />
-                    </button>
                   </div>
                 </div>
               </div>

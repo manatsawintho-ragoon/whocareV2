@@ -74,13 +74,13 @@ const Header = () => {
       >
         <div className="container mx-auto max-w-6xl flex items-center justify-between p-6">
           {/* Logo */}
-          <Link to="/" className="flex items-center">
+          <a href="/" className="flex items-center">
             <img
               src="/images/logo/logo.svg"
               alt="Whocare Hospital"
               className="h-10 w-auto"
             />
-          </Link>
+          </a>
 
           {/* Desktop Navigation */}
           <nav
