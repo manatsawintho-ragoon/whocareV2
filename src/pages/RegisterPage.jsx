@@ -26,7 +26,6 @@ const RegisterPage = () => {
     passport: '',
     nationality: '',
     birthDate: '',
-    gender: '',
     bloodType: '',
     allergies: '',
     phone: '',
@@ -37,8 +36,8 @@ const RegisterPage = () => {
   });
 
   const isThai = userType === 'thai';
-  const thTitles = ['นาย', 'นาง', 'นางสาว', 'เด็กชาย', 'เด็กหญิง'];
-  const enTitles = ['Mr.', 'Mrs.', 'Ms.', 'Master', 'Miss'];
+  const thTitles = ['นาย', 'นาง', 'นางสาว'];
+  const enTitles = ['Mr.', 'Mrs.', 'Ms.'];
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -81,7 +80,6 @@ const RegisterPage = () => {
         if (!form.lastNameEn) return 'Last name is required';
       }
       if (!form.birthDate) return isThai ? 'กรุณาเลือกวันเกิด' : 'Date of birth is required';
-      if (!form.gender) return isThai ? 'กรุณาเลือกเพศ' : 'Gender is required';
     }
     if (s === 4) {
       if (!form.phone) return isThai ? 'กรุณากรอกเบอร์โทรศัพท์' : 'Phone number is required';
@@ -123,7 +121,13 @@ const RegisterPage = () => {
 
     setLoading(true);
     try {
-      const result = await apiRegister({ userType, ...form });
+      // Auto-derive gender from title prefix
+      let autoGender = '';
+      const title = isThai ? form.titleTh : form.titleEn;
+      if (['นาย', 'Mr.'].includes(title)) autoGender = isThai ? 'ชาย' : 'Male';
+      else if (['นาง', 'นางสาว', 'Mrs.', 'Ms.'].includes(title)) autoGender = isThai ? 'หญิง' : 'Female';
+
+      const result = await apiRegister({ userType, ...form, gender: autoGender });
 
       if (result.success) {
         login(result.data.user);
@@ -431,8 +435,8 @@ const RegisterPage = () => {
                   </>
                 )}
 
-                {/* Birth Date & Gender */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Birth Date */}
+                <div>
                   <div>
                     <label className="block text-sm font-medium text-midnight_text dark:text-white/80 mb-1.5">
                       {isThai ? 'วันเกิด' : 'Date of Birth'}
@@ -463,14 +467,6 @@ const RegisterPage = () => {
                       />
                     </div>
                   </div>
-                  <FormSelect
-                    label={isThai ? 'เพศ' : 'Gender'}
-                    name="gender"
-                    value={form.gender}
-                    onChange={handleChange}
-                    options={isThai ? ['ชาย', 'หญิง', 'ไม่ระบุ'] : ['Male', 'Female', 'Prefer not to say']}
-                    icon="fa-venus-mars"
-                  />
                 </div>
               </div>
             )}

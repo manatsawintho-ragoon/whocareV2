@@ -47,41 +47,21 @@ const Hero = () => {
             ))}
 
             {/* Overlay gradient */}
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-blue-600/80 to-transparent dark:from-primary/95 dark:via-blue-800/85 dark:to-blue-900/40" />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/50 via-blue-600/40 to-transparent dark:from-primary/60 dark:via-blue-800/50 dark:to-blue-900/20" />
 
             {/* Content */}
             <div className="relative z-10 flex flex-col justify-center h-full p-8 md:p-12 lg:p-16 min-h-[400px] md:min-h-[480px]">
               <div className="max-w-xl">
-                <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-medium px-4 py-1.5 rounded-full mb-6 backdrop-blur-sm">
-                  <Icon icon="mdi:sparkles" width="16" />
-                  WHOCARE CLINIC
-                </span>
                 <h1 className="text-white font-bold text-3xl md:text-4xl lg:text-5xl leading-tight mb-4">
                   สวยครบจบในที่เดียว
                   <br />
                   <span className="text-white/90">คลินิกศัลยกรรมความงาม</span>
                 </h1>
-                <p className="text-white/80 text-lg md:text-xl mb-8 leading-relaxed">
+                <p className="text-white/80 text-lg md:text-xl leading-relaxed">
                   ด้วยทีมศัลยแพทย์ผู้เชี่ยวชาญ เทคโนโลยีระดับสากล
                   <br className="hidden md:block" />
                   ปลอดภัย มั่นใจ สวยธรรมชาติ
                 </p>
-                <div className="flex flex-wrap gap-3">
-                  <a
-                    href="#promotions"
-                    className="inline-flex items-center gap-2 bg-white text-primary font-semibold px-7 py-3 rounded-xl hover:bg-gray-100 transition-colors shadow-lg"
-                  >
-                    <Icon icon="mdi:tag-heart" width="20" />
-                    ดูโปรโมชั่น
-                  </a>
-                  <a
-                    href="#contact"
-                    className="inline-flex items-center gap-2 bg-white/20 text-white font-semibold px-7 py-3 rounded-xl hover:bg-white/30 transition-colors backdrop-blur-sm border border-white/30"
-                  >
-                    <Icon icon="mdi:phone" width="20" />
-                    นัดปรึกษาฟรี
-                  </a>
-                </div>
               </div>
 
               {/* Arrow left */}

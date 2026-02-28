@@ -16,12 +16,16 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 // Helper: resolve table name from user type
 const getTable = (userType) => (userType === 'thai' ? 'users_th' : 'users_foreign');
 
+// Valid roles
+const VALID_ROLES = ['super_admin', 'doctor', 'nurse', 'reception', 'accountant', 'manager', 'patient'];
+
 // Helper: generate tokens
 const generateTokens = (user) => {
   const payload = {
     id: user.id,
     email: user.email,
     user_type: user.user_type,
+    role: user.role || 'patient',
   };
 
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -41,7 +45,7 @@ const getRefreshExpiry = () => {
 // Helper: strip sensitive fields and attach user_type
 const sanitizeUser = (user, userType) => {
   const { password_hash, ...safe } = user;
-  return { ...safe, user_type: userType };
+  return { ...safe, user_type: userType, role: user.role || 'patient' };
 };
 
 // ============================================================
@@ -49,13 +53,20 @@ const sanitizeUser = (user, userType) => {
 // ============================================================
 router.post('/register', async (req, res) => {
   try {
-    const {
+    let {
       userType,
       titleTh, firstNameTh, lastNameTh, thaiId,
       titleEn, firstNameEn, lastNameEn, passport, nationality,
       birthDate, gender, bloodType, allergies,
       phone, email, password,
     } = req.body;
+
+    // Auto-derive gender from title prefix if not provided
+    if (!gender) {
+      const title = userType === 'thai' ? titleTh : titleEn;
+      if (['นาย', 'Mr.', 'นพ.'].includes(title)) gender = userType === 'thai' ? 'ชาย' : 'Male';
+      else if (['นาง', 'นางสาว', 'Mrs.', 'Ms.', 'พญ.'].includes(title)) gender = userType === 'thai' ? 'หญิง' : 'Female';
+    }
 
     // --- Validation ---
     if (!userType || !email || !password) {
@@ -454,25 +465,33 @@ router.put('/profile', async (req, res) => {
     }
 
     const table = getTable(decoded.user_type);
-    const { birth_date, gender, blood_type, allergies, phone } = req.body;
+    const { birth_date, blood_type, allergies, phone } = req.body;
 
+    // Auto-derive gender from title prefix
+    let autoGender = null;
     if (decoded.user_type === 'thai') {
       const { title_th, first_name_th, last_name_th } = req.body;
+      if (['นาย', 'นพ.'].includes(title_th)) autoGender = 'ชาย';
+      else if (['นาง', 'นางสาว', 'พญ.'].includes(title_th)) autoGender = 'หญิง';
+
       if (!first_name_th || !last_name_th) {
         return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อและนามสกุล' });
       }
       await pool.query(
         `UPDATE ${table} SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
-        [title_th || '', first_name_th, last_name_th, birth_date || null, gender || null, blood_type || null, allergies || null, phone || null, decoded.id]
+        [title_th || '', first_name_th, last_name_th, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, decoded.id]
       );
     } else {
       const { title_en, first_name_en, last_name_en, nationality } = req.body;
+      if (['Mr.', 'Dr.'].includes(title_en)) autoGender = 'Male';
+      else if (['Mrs.', 'Ms.'].includes(title_en)) autoGender = 'Female';
+
       if (!first_name_en || !last_name_en) {
         return res.status(400).json({ success: false, message: 'กรุณากรอก First Name และ Last Name' });
       }
       await pool.query(
         `UPDATE ${table} SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
-        [title_en || '', first_name_en, last_name_en, nationality || null, birth_date || null, gender || null, blood_type || null, allergies || null, phone || null, decoded.id]
+        [title_en || '', first_name_en, last_name_en, nationality || null, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, decoded.id]
       );
     }
 

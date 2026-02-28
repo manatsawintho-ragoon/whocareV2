@@ -35,11 +35,7 @@ PORT=5000
 CORS_ORIGIN=http://localhost:5173
 ```
 
-### 3. สร้างตาราง Database
-
-นำ SQL จากไฟล์ `backend/database/init.sql` ไป run ใน Supabase SQL Editor
-
-### 4. รันโปรเจค
+### 3. รันโปรเจค
 
 เปิด 2 terminal:
 

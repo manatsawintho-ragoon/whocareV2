@@ -1,9 +1,28 @@
 // Menu items
 export const menuItems = [
   { name: "หน้าแรก", href: "/", type: "link" },
-  { name: "เกี่ยวกับเรา", href: "/#about", type: "link" },
-  { name: "เลือกสาขา", href: "#", type: "hospital-modal" },
-  { name: "ติดต่อเรา", href: "/#contact", type: "link" },
+  {
+    name: "บริการ",
+    type: "dropdown",
+    children: [
+      { name: "ค้นหาแพทย์", desc: "ค้นหาแพทย์ผู้เชี่ยวชาญ", href: "/doctors", icon: "mdi:doctor" },
+      { name: "นัดหมาย", desc: "นัดหมายแพทย์ออนไลน์", href: "/appointment", icon: "mdi:calendar-clock" },
+      { name: "แนะนำบริการ", desc: "บริการทั้งหมดของเรา", href: "/services", icon: "mdi:hand-heart" },
+      { name: "แพ็กเกจ & โปรโมชั่น", desc: "โปรโมชั่นและแพ็กเกจพิเศษ", href: "/packages", icon: "mdi:tag-multiple" },
+      { name: "ศูนย์ทางการแพทย์", desc: "ศูนย์การแพทย์เฉพาะทาง", href: "/medical-center", icon: "mdi:hospital-building" },
+      { name: "ชำระค่าบริการ", desc: "ชำระเงินออนไลน์", href: "/payment", icon: "mdi:credit-card" },
+      { name: "นโยบายการคืนเงิน", desc: "เงื่อนไขการคืนเงิน", href: "/refund-policy", icon: "mdi:cash-refund" },
+    ],
+  },
+  {
+    name: "บทความ",
+    type: "dropdown",
+    children: [
+      { name: "บทความสุขภาพ", desc: "ความรู้ด้านสุขภาพ", href: "/articles/health", icon: "mdi:newspaper-variant" },
+      { name: "ข่าวสาร", desc: "ข่าวสารและกิจกรรม", href: "/articles/news", icon: "mdi:bullhorn" },
+      { name: "จากใจผู้ใช้บริการ", desc: "รีวิวจากผู้ใช้บริการจริง", href: "/articles/reviews", icon: "mdi:account-heart" },
+    ],
+  },
 ];
 
 // Clinic branch data

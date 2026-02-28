@@ -4,24 +4,27 @@ import { Icon } from '@iconify/react';
 import Swal from 'sweetalert2';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, ROLE_CONFIG } from '../context/AuthContext';
 import { apiGetProfile, apiUpdateProfile } from '../services/api';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
-  const { user, updateUser } = useAuth();
+  const { user, loading: authLoading, updateUser, getUserRole, getRoleConfig } = useAuth();
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       navigate('/login');
       return;
     }
-    fetchProfile();
-  }, [user]);
+    if (!form) {
+      fetchProfile();
+    }
+  }, [user, authLoading]);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -48,7 +51,24 @@ const ProfilePage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Valid titles per role
+  const doctorTitlesTh = ['นพ.', 'พญ.', 'Dr.'];
+  const normalTitlesTh = ['นาย', 'นาง', 'นางสาว'];
+  const doctorTitlesEn = ['Dr.'];
+  const normalTitlesEn = ['Mr.', 'Mrs.', 'Ms.'];
+
   const openEditModal = () => {
+    // Auto-correct title if it doesn't match current role's valid options
+    const isDoctor = getUserRole() === 'doctor';
+    const validTh = isDoctor ? doctorTitlesTh : normalTitlesTh;
+    const validEn = isDoctor ? doctorTitlesEn : normalTitlesEn;
+
+    setForm((prev) => ({
+      ...prev,
+      title_th: validTh.includes(prev.title_th) ? prev.title_th : '',
+      title_en: validEn.includes(prev.title_en) ? prev.title_en : '',
+    }));
+
     setEditOpen(true);
     document.body.style.overflow = 'hidden';
   };
@@ -89,7 +109,12 @@ const ProfilePage = () => {
     try {
       const result = await apiUpdateProfile(form);
       if (result.success) {
-        updateUser(result.data.user);
+        const updatedUser = result.data.user;
+        if (updatedUser.birth_date) {
+          updatedUser.birth_date = updatedUser.birth_date.split('T')[0];
+        }
+        setForm(updatedUser);
+        updateUser(updatedUser);
         closeEditModal();
         await Swal.fire({
           title: 'บันทึกสำเร็จ!',
@@ -99,7 +124,6 @@ const ProfilePage = () => {
           timer: 2000,
           timerProgressBar: true,
         });
-        fetchProfile();
       } else {
         Swal.fire({ title: 'เกิดข้อผิดพลาด', text: result.message, icon: 'error', confirmButtonColor: '#3b82f6' });
       }
@@ -110,7 +134,7 @@ const ProfilePage = () => {
     }
   };
 
-  if (loading || !form) {
+  if (authLoading || loading || !form || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-section dark:bg-darkmode">
         <div className="flex flex-col items-center gap-3">
@@ -136,7 +160,6 @@ const ProfilePage = () => {
     { icon: 'mdi:email', label: 'อีเมล', value: form.email || '-' },
     { icon: 'mdi:phone', label: 'โทรศัพท์', value: form.phone || '-' },
     { icon: 'mdi:cake-variant', label: 'วันเกิด', value: form.birth_date || '-' },
-    { icon: 'mdi:gender-male-female', label: 'เพศ', value: form.gender || '-' },
     { icon: 'mdi:water', label: 'กรุ๊ปเลือด', value: form.blood_type || '-' },
     { icon: 'mdi:alert-circle', label: 'ประวัติแพ้ยา', value: form.allergies || '-' },
   ];
@@ -166,9 +189,17 @@ const ProfilePage = () => {
           {/* Name & type */}
           <div className="text-center pt-14 pb-4 px-6">
             <h1 className="text-xl font-bold text-midnight_text dark:text-white">{displayName}</h1>
-            <span className="inline-block mt-1.5 px-3 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-              {isThai ? 'บัญชีคนไทย' : 'Foreign Account'}
-            </span>
+            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+              <span className="inline-block px-3 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                {isThai ? 'บัญชีคนไทย' : 'Foreign Account'}
+              </span>
+              {user.role && (
+                <span className={`inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-medium ${getRoleConfig().bgColor} ${getRoleConfig().textColor}`}>
+                  <Icon icon={getRoleConfig().icon} width="13" />
+                  {getRoleConfig().labelTh}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Info grid */}
@@ -240,11 +271,20 @@ const ProfilePage = () => {
                   <div className="col-span-2">
                     <label className={labelClass}>คำนำหน้า</label>
                     <select name="title_th" value={form.title_th || ''} onChange={handleChange} className={inputClass}>
-                      <option value="นาย">นาย</option>
-                      <option value="นาง">นาง</option>
-                      <option value="นางสาว">นางสาว</option>
-                      <option value="เด็กชาย">เด็กชาย</option>
-                      <option value="เด็กหญิง">เด็กหญิง</option>
+                      <option value="" disabled>-- เลือก --</option>
+                      {getUserRole() === 'doctor' ? (
+                        <>
+                          <option value="นพ.">นพ.</option>
+                          <option value="พญ.">พญ.</option>
+                          <option value="Dr.">Dr.</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="นาย">นาย</option>
+                          <option value="นาง">นาง</option>
+                          <option value="นางสาว">นางสาว</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div className="col-span-2">
@@ -262,10 +302,16 @@ const ProfilePage = () => {
                     <div className="col-span-2">
                       <label className={labelClass}>Title</label>
                       <select name="title_en" value={form.title_en || ''} onChange={handleChange} className={inputClass}>
-                        <option value="Mr.">Mr.</option>
-                        <option value="Mrs.">Mrs.</option>
-                        <option value="Ms.">Ms.</option>
-                        <option value="Dr.">Dr.</option>
+                        <option value="" disabled>-- Select --</option>
+                        {getUserRole() === 'doctor' ? (
+                          <option value="Dr.">Dr.</option>
+                        ) : (
+                          <>
+                            <option value="Mr.">Mr.</option>
+                            <option value="Mrs.">Mrs.</option>
+                            <option value="Ms.">Ms.</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <div className="col-span-2">
@@ -284,42 +330,31 @@ const ProfilePage = () => {
                 </>
               )}
 
-              {/* Date & Gender */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>วันเกิด</label>
-                  <DatePicker
-                    selected={form.birth_date ? new Date(form.birth_date + 'T00:00:00') : null}
-                    onChange={(date) => {
-                      if (date) {
-                        const y = date.getFullYear();
-                        const m = String(date.getMonth() + 1).padStart(2, '0');
-                        const d = String(date.getDate()).padStart(2, '0');
-                        setForm((prev) => ({ ...prev, birth_date: `${y}-${m}-${d}` }));
-                      } else {
-                        setForm((prev) => ({ ...prev, birth_date: '' }));
-                      }
-                    }}
-                    dateFormat="dd/MM/yyyy"
-                    showMonthDropdown
-                    showYearDropdown
-                    dropdownMode="select"
-                    maxDate={new Date()}
-                    placeholderText="วว/ดด/ปปปป"
-                    className={inputClass}
-                    wrapperClassName="w-full"
-                    popperClassName="datepicker-popper"
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>เพศ</label>
-                  <select name="gender" value={form.gender || ''} onChange={handleChange} className={inputClass}>
-                    <option value="">-- เลือก --</option>
-                    <option value="ชาย">ชาย</option>
-                    <option value="หญิง">หญิง</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
-                </div>
+              {/* Date */}
+              <div>
+                <label className={labelClass}>วันเกิด</label>
+                <DatePicker
+                  selected={form.birth_date ? new Date(form.birth_date + 'T00:00:00') : null}
+                  onChange={(date) => {
+                    if (date) {
+                      const y = date.getFullYear();
+                      const m = String(date.getMonth() + 1).padStart(2, '0');
+                      const d = String(date.getDate()).padStart(2, '0');
+                      setForm((prev) => ({ ...prev, birth_date: `${y}-${m}-${d}` }));
+                    } else {
+                      setForm((prev) => ({ ...prev, birth_date: '' }));
+                    }
+                  }}
+                  dateFormat="dd/MM/yyyy"
+                  showMonthDropdown
+                  showYearDropdown
+                  dropdownMode="select"
+                  maxDate={new Date()}
+                  placeholderText="วว/ดด/ปปปป"
+                  className={inputClass}
+                  wrapperClassName="w-full"
+                  popperClassName="datepicker-popper"
+                />
               </div>
 
               {/* Blood & Phone */}

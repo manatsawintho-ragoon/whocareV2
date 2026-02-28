@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { testConnection } from './database/db.js';
 import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
+import servicesRoutes from './routes/services.js';
 import authMiddleware from './middleware/auth.js';
 import pool from './database/db.js';
 
@@ -24,32 +26,34 @@ app.use(cors({
 app.use(express.json({ limit: '10kb' }));
 
 // Rate limiting
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // max 50 requests per window
-  message: {
-    success: false,
-    message: 'คำขอมากเกินไป กรุณาลองใหม่ภายหลัง',
-    message_en: 'Too many requests, please try again later',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 50, // max 50 requests per window
+//   message: {
+//     success: false,
+//     message: 'คำขอมากเกินไป กรุณาลองใหม่ภายหลัง',
+//     message_en: 'Too many requests, please try again later',
+//   },
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// const generalLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 100,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
-app.use('/api/', generalLimiter);
-app.use('/api/auth/', authLimiter);
+// app.use('/api/', generalLimiter);
+// app.use('/api/auth/', authLimiter);
 
 // ============================================================
 // Routes
 // ============================================================
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/services', servicesRoutes);
 
 // Protected route example: get current user profile
 app.get('/api/user/profile', authMiddleware, async (req, res) => {

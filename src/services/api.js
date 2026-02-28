@@ -158,3 +158,103 @@ export const apiUpdateProfile = async (data) => {
   }
   return result;
 };
+
+// ============================================================
+// Admin API
+// ============================================================
+export const apiGetUsers = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiFetch(`/admin/users?${query}`);
+  return response.json();
+};
+
+export const apiUpdateUserRole = async (userType, userId, role) => {
+  const response = await apiFetch(`/admin/users/${userType}/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+  return response.json();
+};
+
+export const apiToggleUserStatus = async (userType, userId, isActive) => {
+  const response = await apiFetch(`/admin/users/${userType}/${userId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  return response.json();
+};
+
+export const apiGetUserDetail = async (userType, userId) => {
+  const response = await apiFetch(`/admin/users/${userType}/${userId}`);
+  return response.json();
+};
+
+export const apiAdminUpdateUser = async (userType, userId, data) => {
+  const response = await apiFetch(`/admin/users/${userType}/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const apiGetAuditLogs = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiFetch(`/admin/audit-logs?${query}`);
+  return response.json();
+};
+
+export const apiGetPermissions = async () => {
+  const response = await apiFetch('/admin/permissions');
+  return response.json();
+};
+
+export const apiUpdatePermission = async (data) => {
+  const response = await apiFetch('/admin/permissions', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const apiGetDashboard = async () => {
+  const response = await apiFetch('/admin/dashboard');
+  return response.json();
+};
+
+// ============================================================
+// Services API
+// ============================================================
+export const apiGetPublicServices = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(`${API_BASE}/services?${query}`);
+  return response.json();
+};
+
+export const apiGetAdminServices = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiFetch(`/services/admin?${query}`);
+  return response.json();
+};
+
+export const apiCreateService = async (data) => {
+  const response = await apiFetch('/services', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const apiUpdateService = async (id, data) => {
+  const response = await apiFetch(`/services/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return response.json();
+};
+
+export const apiDeleteService = async (id) => {
+  const response = await apiFetch(`/services/${id}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+};

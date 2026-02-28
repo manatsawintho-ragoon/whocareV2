@@ -4,12 +4,12 @@ import Swal from 'sweetalert2';
 import { menuItems } from '../data/data';
 import { Icon } from '@iconify/react';
 import HospitalModal from './HospitalModal';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, ROLE_CONFIG } from '../context/AuthContext';
 
 const Header = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, getDisplayName } = useAuth();
+  const { user, logout, getDisplayName, getUserRole, getRoleConfig, isStaff, isAdmin } = useAuth();
   const [navbarOpen, setNavbarOpen] = useState(false);
   const [sticky, setSticky] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -257,8 +257,22 @@ const Header = () => {
                       {getDisplayName()}
                     </p>
                     <p className="text-xs text-grey dark:text-white/50 truncate">{user.email}</p>
+                    {user.role && (
+                      <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRoleConfig().bgColor} ${getRoleConfig().textColor}`}>
+                        <Icon icon={getRoleConfig().icon} width="11" />
+                        {getRoleConfig().labelTh}
+                      </span>
+                    )}
                   </div>
                   <div className="py-1">
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-midnight_text dark:text-white hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
+                    >
+                      <Icon icon="mdi:view-dashboard" width="18" />
+                      แดชบอร์ด
+                    </Link>
                     <Link
                       to="/profile"
                       onClick={() => setUserMenuOpen(false)}
@@ -267,6 +281,16 @@ const Header = () => {
                       <Icon icon="mdi:account-edit" width="18" />
                       แก้ไขโปรไฟล์
                     </Link>
+                    {isAdmin() && (
+                      <Link
+                        to="/admin/users"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-midnight_text dark:text-white hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
+                      >
+                        <Icon icon="mdi:account-group" width="18" />
+                        จัดการผู้ใช้
+                      </Link>
+                    )}
                     <button
                       onClick={async () => {
                         setUserMenuOpen(false);
@@ -452,8 +476,22 @@ const Header = () => {
                         {getDisplayName()}
                       </p>
                       <p className="text-xs text-grey dark:text-white/50 truncate">{user.email}</p>
+                      {user.role && (
+                        <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${getRoleConfig().bgColor} ${getRoleConfig().textColor}`}>
+                          <Icon icon={getRoleConfig().icon} width="11" />
+                          {getRoleConfig().labelTh}
+                        </span>
+                      )}
                     </div>
                   </div>
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setNavbarOpen(false)}
+                    className="flex items-center justify-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Icon icon="mdi:view-dashboard" width="18" />
+                    แดชบอร์ด
+                  </Link>
                   <Link
                     to="/profile"
                     onClick={() => setNavbarOpen(false)}
@@ -462,6 +500,16 @@ const Header = () => {
                     <Icon icon="mdi:account-edit" width="18" />
                     แก้ไขโปรไฟล์
                   </Link>
+                  {isAdmin() && (
+                    <Link
+                      to="/admin/users"
+                      onClick={() => setNavbarOpen(false)}
+                      className="flex items-center justify-center gap-2 bg-primary/5 text-primary px-4 py-2 rounded-lg hover:bg-primary/10 transition-colors"
+                    >
+                      <Icon icon="mdi:account-group" width="18" />
+                      จัดการผู้ใช้
+                    </Link>
+                  )}
                   <button
                     onClick={async () => {
                       setNavbarOpen(false);
