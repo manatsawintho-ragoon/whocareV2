@@ -1,10 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
-import { apiGetPublicServices, apiGetServiceCategories } from '../services/api';
+import { apiGetPublicServices } from '../services/api';
+
+const TABS = [
+  { key: 'all',       label: 'ดูทั้งหมด',      icon: 'mdi:view-grid' },
+  { key: 'checkup',   label: 'ตรวจสุขภาพ',    icon: 'mdi:stethoscope' },
+  { key: 'vaccine',   label: 'วัคซีน',         icon: 'mdi:needle' },
+  { key: 'screening', label: 'คัดกรองมะเร็ง',  icon: 'mdi:radiology-box' },
+  { key: 'beauty',    label: 'ความงาม',        icon: 'mdi:face-woman-shimmer' },
+  { key: 'dental',    label: 'ทันตกรรม',       icon: 'mdi:tooth' },
+  { key: 'general',   label: 'ทั่วไป',          icon: 'mdi:hospital-box' },
+];
 
 const ServicesSection = () => {
   const [services, setServices] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState({});
@@ -12,12 +21,6 @@ const ServicesSection = () => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [activeDot, setActiveDot] = useState(0);
-
-  useEffect(() => {
-    apiGetServiceCategories()
-      .then((res) => { if (res.success) setCategories(res.data || []); })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     fetchServices();
@@ -81,8 +84,6 @@ const ServicesSection = () => {
     return `${a} - ${b} THB`;
   };
 
-  const tabs = [{ key: 'all', label: 'ดูทั้งหมด' }, ...categories.map((c) => ({ key: c, label: c }))];
-
   const totalDots = Math.max(0, services.length - 3);
 
   return (
@@ -100,16 +101,17 @@ const ServicesSection = () => {
 
           {/* Category tabs */}
           <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
+            {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all cursor-pointer ${
                   activeTab === tab.key
-                    ? 'bg-primary text-white border-primary'
+                    ? 'bg-primary text-white border-primary shadow-sm'
                     : 'bg-white dark:bg-darkmode text-midnight_text dark:text-white border-border dark:border-dark_border hover:border-primary hover:text-primary'
                 }`}
               >
+                <Icon icon={tab.icon} width="15" />
                 {tab.label}
               </button>
             ))}
