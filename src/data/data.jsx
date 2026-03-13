@@ -18,9 +18,8 @@ export const menuItems = [
     name: "บทความ",
     type: "dropdown",
     children: [
-      { name: "บทความสุขภาพ", desc: "ความรู้ด้านสุขภาพ", href: "/articles/health", icon: "mdi:newspaper-variant" },
-      { name: "ข่าวสาร", desc: "ข่าวสารและกิจกรรม", href: "/articles/news", icon: "mdi:bullhorn" },
-      { name: "จากใจผู้ใช้บริการ", desc: "รีวิวจากผู้ใช้บริการจริง", href: "/articles/reviews", icon: "mdi:account-heart" },
+      { name: "บทความสุขภาพ", desc: "ความรู้ด้านสุขภาพ วิเคราะห์ เทคนิคดูแลตัวเอง", href: "/articles", icon: "mdi:notebook-outline" },
+      { name: "ข่าวสาร", desc: "ข่าวสาร กิจกรรม และรายงานเหตุการณ์", href: "/news", icon: "mdi:bullhorn" },
     ],
   },
 ];

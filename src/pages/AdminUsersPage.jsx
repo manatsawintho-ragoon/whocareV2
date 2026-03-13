@@ -84,7 +84,7 @@ const AdminUsersPage = () => {
 
     if (newRole && newRole !== currentRole) {
       try {
-        const result = await apiUpdateUserRole(targetUser.user_type, targetUser.id, newRole);
+        const result = await apiUpdateUserRole(targetUser.id, newRole);
         if (result.success) {
           Swal.fire({
             title: 'สำเร็จ',
@@ -120,7 +120,6 @@ const AdminUsersPage = () => {
     if (confirm.isConfirmed) {
       try {
         const result = await apiToggleUserStatus(
-          targetUser.user_type,
           targetUser.id,
           !targetUser.is_active
         );
@@ -152,7 +151,7 @@ const AdminUsersPage = () => {
     setEditMode(false);
     document.body.style.overflow = 'hidden';
     try {
-      const result = await apiGetUserDetail(u.user_type, u.id);
+      const result = await apiGetUserDetail(u.id);
       if (result.success) {
         const userData = result.data.user;
         if (userData.birth_date) userData.birth_date = userData.birth_date.split('T')[0];
@@ -183,7 +182,7 @@ const AdminUsersPage = () => {
   const saveUserEdit = async () => {
     setSaving(true);
     try {
-      const result = await apiAdminUpdateUser(editForm.user_type, editForm.id, editForm);
+      const result = await apiAdminUpdateUser(editForm.id, editForm);
       if (result.success) {
         const updated = result.data.user;
         if (updated.birth_date) updated.birth_date = updated.birth_date.split('T')[0];

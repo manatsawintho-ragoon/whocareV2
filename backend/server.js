@@ -9,6 +9,7 @@ import adminRoutes from './routes/admin.js';
 import servicesRoutes from './routes/services.js';
 import bookingsRoutes from './routes/bookings.js';
 import financeRoutes from './routes/finance.js';
+import newsRoutes from './routes/news.js';
 import authMiddleware from './middleware/auth.js';
 import pool from './database/db.js';
 
@@ -58,12 +59,12 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/finance', financeRoutes);
+app.use('/api/news', newsRoutes);
 
 // Protected route example: get current user profile
 app.get('/api/user/profile', authMiddleware, async (req, res) => {
   try {
-    const table = req.user.user_type === 'thai' ? 'users_th' : 'users_foreign';
-    const [users] = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND is_active = TRUE`, [req.user.id]);
+    const [users] = await pool.query(`SELECT * FROM users WHERE id = $1 AND is_active = TRUE`, [req.user.id]);
     if (users.length === 0) {
       return res.status(404).json({
         success: false,
@@ -72,7 +73,7 @@ app.get('/api/user/profile', authMiddleware, async (req, res) => {
       });
     }
     const { password_hash, ...user } = users[0];
-    res.json({ success: true, data: { user: { ...user, user_type: req.user.user_type } } });
+    res.json({ success: true, data: { user } });
   } catch (error) {
     console.error('Profile error:', error);
     res.status(500).json({

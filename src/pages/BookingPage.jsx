@@ -36,6 +36,9 @@ const BookingPage = () => {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [contactId, setContactId] = useState('');
+  const [contactIdLabel, setContactIdLabel] = useState('');
+  const [contactNationality, setContactNationality] = useState('');
   const [note, setNote] = useState('');
 
   const bookableDates = useRef(generate7Days());
@@ -64,6 +67,14 @@ const BookingPage = () => {
         ? `${user.title_th || ''} ${user.first_name_th || ''} ${user.last_name_th || ''}`.trim()
         : `${user.title_en || ''} ${user.first_name_en || ''} ${user.last_name_en || ''}`.trim();
       setContactName(dn); setContactPhone(user.phone || ''); setContactEmail(user.email || '');
+      if (user.user_type === 'thai') {
+        setContactId(user.thai_id || '-');
+        setContactIdLabel('เลขบัตรประชาชน');
+      } else {
+        setContactId(user.passport || '-');
+        setContactIdLabel('Passport');
+        setContactNationality(user.nationality || '-');
+      }
     }
   }, [user]);
 
@@ -112,7 +123,7 @@ const BookingPage = () => {
         Swal.fire({ icon: 'warning', title: 'ยอดเงินไม่เพียงพอ', html: `ต้องการ <b>฿${formatPrice(dep)}</b> — คงเหลือ <b>฿${formatPrice(balance)}</b><br>กรุณาเติมเงินก่อน`, confirmButtonText: 'เติมเงิน', confirmButtonColor: '#3b82f6', showCancelButton: true, cancelButtonText: 'ยกเลิก' }).then(r => { if (r.isConfirmed) navigate('/my-bookings'); });
         setSubmitting(false); return;
       }
-      const result = await apiCreateBooking({ service_id: parseInt(id), booking_date: selectedDate, booking_time: selectedTime, branch: service?.branch || '', contact_name: contactName, contact_phone: contactPhone, contact_email: contactEmail, note, price: sp, doctor_id: selectedDoctor?.id || null, doctor_type: selectedDoctor?.user_type || 'thai' });
+      const result = await apiCreateBooking({ service_id: parseInt(id), booking_date: selectedDate, booking_time: selectedTime, branch: service?.branch || '', contact_name: contactName, contact_phone: contactPhone, contact_email: contactEmail, note, price: sp, doctor_id: selectedDoctor?.id || null });
       if (result.success) { setBookingResult(result.data); clearLockInterval(); currentLockRef.current = null; setStep(TOTAL_STEPS + 1); }
       else {
         if (result.code === 'INSUFFICIENT_BALANCE') Swal.fire({ icon: 'warning', title: 'ยอดเงินไม่เพียงพอ', text: result.message, confirmButtonColor: '#3b82f6' });
@@ -229,10 +240,10 @@ const BookingPage = () => {
                   <p className="text-xs text-gray-400 mt-1 ml-10">ข้อมูลจากโปรไฟล์ (ไม่สามารถเปลี่ยนแปลงได้)</p>
                 </div>
 
-                {[['ชื่อ-นามสกุล', contactName], ['เบอร์โทรศัพท์', contactPhone], ['อีเมล', contactEmail]].map(([label, val]) => (
+                {[['ชื่อ-นามสกุล', contactName], ['เบอร์โทรศัพท์', contactPhone], ['อีเมล', contactEmail], [contactIdLabel, contactId], ...(contactNationality ? [['สัญชาติ', contactNationality]] : [])].map(([label, val]) => (
                   <div key={label}>
                     <label className="block text-sm font-semibold text-gray-600 dark:text-white/70 mb-1.5">{label}</label>
-                    <div className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-darkmode border border-gray-200 dark:border-dark_border text-gray-700 dark:text-white text-sm">{val || '-'}</div>
+                    <input type="text" disabled value={val || '-'} className="w-full px-4 py-3 rounded-xl bg-gray-100 dark:bg-darkmode border border-gray-200 dark:border-dark_border text-gray-400 dark:text-white/40 text-sm cursor-not-allowed" />
                   </div>
                 ))}
 
@@ -275,17 +286,17 @@ const BookingPage = () => {
                   <div className="relative">
                     <Icon icon="mdi:doctor" width="18" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
                     <select
-                      value={selectedDoctor ? `${selectedDoctor.user_type}-${selectedDoctor.id}` : ''}
+                      value={selectedDoctor ? String(selectedDoctor.id) : ''}
                       onChange={(e) => {
                         if (!e.target.value) { setSelectedDoctor(null); return; }
-                        const doc = doctors.find(d => `${d.user_type}-${d.id}` === e.target.value);
+                        const doc = doctors.find(d => String(d.id) === e.target.value);
                         setSelectedDoctor(doc || null);
                       }}
                       className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-200 dark:border-dark_border bg-white dark:bg-darkmode text-sm text-gray-700 dark:text-white appearance-none cursor-pointer focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-500/20 transition-all"
                     >
                       <option value="">ไม่ระบุ (ทางคลินิคเลือกให้)</option>
                       {doctors.map(doc => (
-                        <option key={`${doc.user_type}-${doc.id}`} value={`${doc.user_type}-${doc.id}`}>
+                        <option key={doc.id} value={String(doc.id)}>
                           {doc.name}
                         </option>
                       ))}

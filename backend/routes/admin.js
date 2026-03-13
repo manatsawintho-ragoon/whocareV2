@@ -18,45 +18,28 @@ router.get('/users', requireRole('super_admin', 'manager'), async (req, res) => 
     const { role, search, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    let whereTh = ['1=1'];
-    let whereFr = ['1=1'];
-    const paramsTh = [];
-    const paramsFr = [];
+    let where = ['1=1'];
+    const params = [];
     let paramIdx = 1;
 
     if (role && VALID_ROLES.includes(role)) {
-      whereTh.push(`role = $${paramIdx}`);
-      paramsTh.push(role);
-      whereFr.push(`role = $${paramIdx}`);
-      paramsFr.push(role);
+      where.push(`role = $${paramIdx}`);
+      params.push(role);
       paramIdx++;
     }
 
     if (search) {
-      whereTh.push(`(first_name_th ILIKE $${paramIdx} OR last_name_th ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR thai_id ILIKE $${paramIdx})`);
-      paramsTh.push(`%${search}%`);
-      whereFr.push(`(first_name_en ILIKE $${paramIdx} OR last_name_en ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR passport ILIKE $${paramIdx})`);
-      paramsFr.push(`%${search}%`);
+      where.push(`(first_name_th ILIKE $${paramIdx} OR last_name_th ILIKE $${paramIdx} OR first_name_en ILIKE $${paramIdx} OR last_name_en ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR thai_id ILIKE $${paramIdx} OR passport ILIKE $${paramIdx})`);
+      params.push(`%${search}%`);
       paramIdx++;
     }
 
-    // Get Thai users
-    const [thaiUsers] = await pool.query(
-      `SELECT id, title_th, first_name_th, last_name_th, thai_id, email, phone, role, is_active, created_at, 'thai' as user_type
-       FROM users_th WHERE ${whereTh.join(' AND ')} ORDER BY created_at DESC`,
-      paramsTh
+    // Get all users from unified table
+    const [allUsers] = await pool.query(
+      `SELECT id, user_type, title_th, first_name_th, last_name_th, thai_id, title_en, first_name_en, last_name_en, passport, nationality, email, phone, role, is_active, created_at
+       FROM users WHERE ${where.join(' AND ')} ORDER BY created_at DESC`,
+      params
     );
-
-    // Get Foreign users
-    const [foreignUsers] = await pool.query(
-      `SELECT id, title_en, first_name_en, last_name_en, passport, nationality, email, phone, role, is_active, created_at, 'foreign' as user_type
-       FROM users_foreign WHERE ${whereFr.join(' AND ')} ORDER BY created_at DESC`,
-      paramsFr
-    );
-
-    // Merge and sort
-    const allUsers = [...thaiUsers, ...foreignUsers]
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // Paginate
     const total = allUsers.length;
@@ -64,11 +47,7 @@ router.get('/users', requireRole('super_admin', 'manager'), async (req, res) => 
 
     // Get role counts
     const [roleCounts] = await pool.query(`
-      SELECT role, COUNT(*) as count FROM (
-        SELECT role FROM users_th
-        UNION ALL
-        SELECT role FROM users_foreign
-      ) combined GROUP BY role
+      SELECT role, COUNT(*) as count FROM users GROUP BY role
     `);
 
     res.json({
@@ -100,9 +79,9 @@ router.get('/users', requireRole('super_admin', 'manager'), async (req, res) => 
 // ============================================================
 // PUT /api/admin/users/:userType/:id/role — Update user role
 // ============================================================
-router.put('/users/:userType/:id/role', requireRole('super_admin'), async (req, res) => {
+router.put('/users/:id/role', requireRole('super_admin'), async (req, res) => {
   try {
-    const { userType, id } = req.params;
+    const { id } = req.params;
     const { role } = req.body;
 
     if (!VALID_ROLES.includes(role)) {
@@ -113,18 +92,8 @@ router.put('/users/:userType/:id/role', requireRole('super_admin'), async (req, 
       });
     }
 
-    if (!['thai', 'foreign'].includes(userType)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ประเภทผู้ใช้ไม่ถูกต้อง',
-        message_en: 'Invalid user type',
-      });
-    }
-
-    const table = userType === 'thai' ? 'users_th' : 'users_foreign';
-
     // Get old role for audit log
-    const [users] = await pool.query(`SELECT role FROM ${table} WHERE id = $1`, [id]);
+    const [users] = await pool.query(`SELECT role, user_type FROM users WHERE id = $1`, [id]);
     if (users.length === 0) {
       return res.status(404).json({
         success: false,
@@ -136,17 +105,16 @@ router.put('/users/:userType/:id/role', requireRole('super_admin'), async (req, 
     const oldRole = users[0].role;
 
     // Update role
-    await pool.query(`UPDATE ${table} SET role = $1 WHERE id = $2`, [role, id]);
+    await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, id]);
 
     // Write audit log
     await pool.query(
-      `INSERT INTO audit_logs (actor_id, actor_type, action, target_table, target_id, old_value, new_value, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO audit_logs (actor_id, action, target_table, target_id, old_value, new_value, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         req.user.id,
-        req.user.user_type,
         'change_role',
-        table,
+        'users',
         id,
         JSON.stringify({ role: oldRole }),
         JSON.stringify({ role }),
@@ -155,9 +123,11 @@ router.put('/users/:userType/:id/role', requireRole('super_admin'), async (req, 
     );
 
     // Fetch updated user
-    const nameCol = userType === 'thai' ? "first_name_th || ' ' || last_name_th" : "first_name_en || ' ' || last_name_en";
     const [updated] = await pool.query(
-      `SELECT id, email, role, ${nameCol} as full_name FROM ${table} WHERE id = $1`,
+      `SELECT id, email, role, user_type,
+        CASE WHEN user_type = 'thai' THEN first_name_th || ' ' || last_name_th
+             ELSE first_name_en || ' ' || last_name_en END as full_name
+       FROM users WHERE id = $1`,
       [id]
     );
 
@@ -180,19 +150,18 @@ router.put('/users/:userType/:id/role', requireRole('super_admin'), async (req, 
 // ============================================================
 // PUT /api/admin/users/:userType/:id/status — Toggle active
 // ============================================================
-router.put('/users/:userType/:id/status', requireRole('super_admin'), async (req, res) => {
+router.put('/users/:id/status', requireRole('super_admin'), async (req, res) => {
   try {
-    const { userType, id } = req.params;
+    const { id } = req.params;
     const { is_active } = req.body;
 
-    const table = userType === 'thai' ? 'users_th' : 'users_foreign';
-    await pool.query(`UPDATE ${table} SET is_active = $1 WHERE id = $2`, [is_active, id]);
+    await pool.query(`UPDATE users SET is_active = $1 WHERE id = $2`, [is_active, id]);
 
     // Audit log
     await pool.query(
-      `INSERT INTO audit_logs (actor_id, actor_type, action, target_table, target_id, new_value, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [req.user.id, req.user.user_type, is_active ? 'activate_user' : 'deactivate_user', table, id, JSON.stringify({ is_active }), req.ip]
+      `INSERT INTO audit_logs (actor_id, action, target_table, target_id, new_value, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.id, is_active ? 'activate_user' : 'deactivate_user', 'users', id, JSON.stringify({ is_active }), req.ip]
     );
 
     res.json({
@@ -209,15 +178,11 @@ router.put('/users/:userType/:id/status', requireRole('super_admin'), async (req
 // ============================================================
 // GET /api/admin/users/:userType/:id — Get single user detail
 // ============================================================
-router.get('/users/:userType/:id', requireRole('super_admin'), async (req, res) => {
+router.get('/users/:id', requireRole('super_admin'), async (req, res) => {
   try {
-    const { userType, id } = req.params;
-    if (!['thai', 'foreign'].includes(userType)) {
-      return res.status(400).json({ success: false, message: 'ประเภทผู้ใช้ไม่ถูกต้อง' });
-    }
+    const { id } = req.params;
 
-    const table = userType === 'thai' ? 'users_th' : 'users_foreign';
-    const [users] = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [id]);
+    const [users] = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
     if (users.length === 0) {
       return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
     }
@@ -225,7 +190,7 @@ router.get('/users/:userType/:id', requireRole('super_admin'), async (req, res) 
     const { password_hash, ...safeUser } = users[0];
     res.json({
       success: true,
-      data: { user: { ...safeUser, user_type: userType } },
+      data: { user: safeUser },
     });
   } catch (error) {
     console.error('Get user detail error:', error);
@@ -236,14 +201,17 @@ router.get('/users/:userType/:id', requireRole('super_admin'), async (req, res) 
 // ============================================================
 // PUT /api/admin/users/:userType/:id — Update user profile (admin)
 // ============================================================
-router.put('/users/:userType/:id', requireRole('super_admin'), async (req, res) => {
+router.put('/users/:id', requireRole('super_admin'), async (req, res) => {
   try {
-    const { userType, id } = req.params;
-    if (!['thai', 'foreign'].includes(userType)) {
-      return res.status(400).json({ success: false, message: 'ประเภทผู้ใช้ไม่ถูกต้อง' });
-    }
+    const { id } = req.params;
 
-    const table = userType === 'thai' ? 'users_th' : 'users_foreign';
+    // Get user to determine type
+    const [currentUser] = await pool.query(`SELECT user_type FROM users WHERE id = $1`, [id]);
+    if (currentUser.length === 0) {
+      return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
+    }
+    const userType = currentUser[0].user_type;
+
     const { birth_date, blood_type, allergies, phone } = req.body;
 
     if (userType === 'thai') {
@@ -254,7 +222,7 @@ router.put('/users/:userType/:id', requireRole('super_admin'), async (req, res) 
       else if (['นาง', 'นางสาว', 'พญ.'].includes(title_th)) autoGender = 'หญิง';
 
       await pool.query(
-        `UPDATE ${table} SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
+        `UPDATE users SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
         [title_th || '', first_name_th, last_name_th, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, id]
       );
     } else {
@@ -264,26 +232,26 @@ router.put('/users/:userType/:id', requireRole('super_admin'), async (req, res) 
       else if (['Mrs.', 'Ms.'].includes(title_en)) autoGender = 'Female';
 
       await pool.query(
-        `UPDATE ${table} SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
+        `UPDATE users SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
         [title_en || '', first_name_en, last_name_en, nationality || null, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, id]
       );
     }
 
     // Audit log
     await pool.query(
-      `INSERT INTO audit_logs (actor_id, actor_type, action, target_table, target_id, new_value, ip_address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [req.user.id, req.user.user_type, 'edit_user_profile', table, id, JSON.stringify(req.body), req.ip]
+      `INSERT INTO audit_logs (actor_id, action, target_table, target_id, new_value, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.id, 'edit_user_profile', 'users', id, JSON.stringify(req.body), req.ip]
     );
 
     // Fetch updated user
-    const [updated] = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [id]);
+    const [updated] = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
     const { password_hash, ...safeUser } = updated[0];
 
     res.json({
       success: true,
       message: 'อัปเดตข้อมูลผู้ใช้สำเร็จ',
-      data: { user: { ...safeUser, user_type: userType } },
+      data: { user: safeUser },
     });
   } catch (error) {
     console.error('Admin update user error:', error);
@@ -372,27 +340,19 @@ router.put('/permissions', requireRole('super_admin'), async (req, res) => {
 router.get('/dashboard', requireRole('super_admin', 'manager'), async (req, res) => {
   try {
     // Total users
-    const [thCount] = await pool.query('SELECT COUNT(*) as count FROM users_th WHERE is_active = TRUE');
-    const [frCount] = await pool.query('SELECT COUNT(*) as count FROM users_foreign WHERE is_active = TRUE');
-    const totalUsers = parseInt(thCount[0].count) + parseInt(frCount[0].count);
+    const [userCount] = await pool.query('SELECT COUNT(*) as count FROM users WHERE is_active = TRUE');
+    const totalUsers = parseInt(userCount[0].count);
 
     // Role distribution
     const [roleDist] = await pool.query(`
-      SELECT role, COUNT(*) as count FROM (
-        SELECT role FROM users_th WHERE is_active = TRUE
-        UNION ALL
-        SELECT role FROM users_foreign WHERE is_active = TRUE
-      ) combined GROUP BY role ORDER BY count DESC
+      SELECT role, COUNT(*) as count FROM users WHERE is_active = TRUE GROUP BY role ORDER BY count DESC
     `);
 
     // Recent registrations (last 7 days)
-    const [recentTh] = await pool.query(
-      "SELECT COUNT(*) as count FROM users_th WHERE created_at >= NOW() - INTERVAL '7 days'"
+    const [recentReg] = await pool.query(
+      "SELECT COUNT(*) as count FROM users WHERE created_at >= NOW() - INTERVAL '7 days'"
     );
-    const [recentFr] = await pool.query(
-      "SELECT COUNT(*) as count FROM users_foreign WHERE created_at >= NOW() - INTERVAL '7 days'"
-    );
-    const recentRegistrations = parseInt(recentTh[0].count) + parseInt(recentFr[0].count);
+    const recentRegistrations = parseInt(recentReg[0].count);
 
     // Recent activity (audit logs)
     const [recentLogs] = await pool.query(

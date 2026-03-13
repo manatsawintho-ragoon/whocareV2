@@ -46,8 +46,8 @@ const Hero = () => {
               />
             ))}
 
-            {/* Overlay gradient */}
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/50 via-blue-600/40 to-transparent dark:from-primary/60 dark:via-blue-800/50 dark:to-blue-900/20" />
+            {/* Overlay gradient - subtle dark for readability */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/20 to-transparent dark:from-black/60 dark:via-black/30 dark:to-transparent" />
 
             {/* Content */}
             <div className="relative z-10 flex flex-col justify-center h-full p-8 md:p-12 lg:p-16 min-h-[400px] md:min-h-[480px]">

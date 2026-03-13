@@ -13,9 +13,6 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
-// Helper: resolve table name from user type
-const getTable = (userType) => (userType === 'thai' ? 'users_th' : 'users_foreign');
-
 // Valid roles
 const VALID_ROLES = ['super_admin', 'doctor', 'nurse', 'reception', 'accountant', 'manager', 'patient'];
 
@@ -42,10 +39,10 @@ const getRefreshExpiry = () => {
   return expiry;
 };
 
-// Helper: strip sensitive fields and attach user_type
-const sanitizeUser = (user, userType) => {
+// Helper: strip sensitive fields
+const sanitizeUser = (user) => {
   const { password_hash, ...safe } = user;
-  return { ...safe, user_type: userType, role: user.role || 'patient' };
+  return { ...safe, role: user.role || 'patient' };
 };
 
 // ============================================================
@@ -85,8 +82,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const table = getTable(userType);
-
     if (userType === 'thai') {
       if (!thaiId || !firstNameTh || !lastNameTh) {
         return res.status(400).json({
@@ -113,10 +108,9 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    // --- Check duplicate email in BOTH tables ---
-    const [emailTh] = await pool.query('SELECT id FROM users_th WHERE email = $1', [email]);
-    const [emailFr] = await pool.query('SELECT id FROM users_foreign WHERE email = $1', [email]);
-    if (emailTh.length > 0 || emailFr.length > 0) {
+    // --- Check duplicate email ---
+    const [emailExists] = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (emailExists.length > 0) {
       return res.status(409).json({
         success: false,
         message: 'อีเมลนี้ถูกใช้งานแล้ว',
@@ -126,7 +120,7 @@ router.post('/register', async (req, res) => {
 
     if (userType === 'thai' && thaiId) {
       const cleanId = thaiId.replace(/\D/g, '');
-      const [existingId] = await pool.query('SELECT id FROM users_th WHERE thai_id = $1', [cleanId]);
+      const [existingId] = await pool.query('SELECT id FROM users WHERE thai_id = $1', [cleanId]);
       if (existingId.length > 0) {
         return res.status(409).json({
           success: false,
@@ -137,7 +131,7 @@ router.post('/register', async (req, res) => {
     }
 
     if (userType === 'foreign' && passport) {
-      const [existingPassport] = await pool.query('SELECT id FROM users_foreign WHERE passport = $1', [passport]);
+      const [existingPassport] = await pool.query('SELECT id FROM users WHERE passport = $1', [passport]);
       if (existingPassport.length > 0) {
         return res.status(409).json({
           success: false,
@@ -155,17 +149,18 @@ router.post('/register', async (req, res) => {
     try {
       await connection.query('BEGIN');
 
-      // --- Insert user into the appropriate table ---
+      // --- Insert user into unified users table ---
       let insertedId;
       if (userType === 'thai') {
         const { rows } = await connection.query(
-          `INSERT INTO users_th (
-            title_th, first_name_th, last_name_th, thai_id,
+          `INSERT INTO users (
+            user_type, title_th, first_name_th, last_name_th, thai_id,
             birth_date, gender, blood_type, allergies,
             phone, email, password_hash
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING id`,
           [
+            'thai',
             titleTh || '', firstNameTh, lastNameTh,
             thaiId.replace(/\D/g, ''),
             birthDate || null, gender || null, bloodType || null, allergies || null,
@@ -175,13 +170,14 @@ router.post('/register', async (req, res) => {
         insertedId = rows[0].id;
       } else {
         const { rows } = await connection.query(
-          `INSERT INTO users_foreign (
-            title_en, first_name_en, last_name_en, passport, nationality,
+          `INSERT INTO users (
+            user_type, title_en, first_name_en, last_name_en, passport, nationality,
             birth_date, gender, blood_type, allergies,
             phone, email, password_hash
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING id`,
           [
+            'foreign',
             titleEn || '', firstNameEn, lastNameEn,
             passport, nationality || null,
             birthDate || null, gender || null, bloodType || null, allergies || null,
@@ -197,12 +193,12 @@ router.post('/register', async (req, res) => {
 
       // --- Save refresh token ---
       await connection.query(
-        'INSERT INTO refresh_tokens (user_id, user_type, token, expires_at) VALUES ($1, $2, $3, $4)',
-        [insertedId, userType, refreshToken, getRefreshExpiry()]
+        'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+        [insertedId, refreshToken, getRefreshExpiry()]
       );
 
       // --- Fetch user data ---
-      const { rows: users } = await connection.query(`SELECT * FROM ${table} WHERE id = $1`, [insertedId]);
+      const { rows: users } = await connection.query(`SELECT * FROM users WHERE id = $1`, [insertedId]);
 
       await connection.query('COMMIT');
 
@@ -211,7 +207,7 @@ router.post('/register', async (req, res) => {
         message: 'สมัครสมาชิกสำเร็จ',
         message_en: 'Registration successful',
         data: {
-          user: sanitizeUser(users[0], userType),
+          user: sanitizeUser(users[0]),
           accessToken,
           refreshToken,
         },
@@ -247,7 +243,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const table = getTable(userType);
     let query, params;
 
     if (userType === 'thai') {
@@ -259,7 +254,7 @@ router.post('/login', async (req, res) => {
         });
       }
       const cleanId = thaiId.replace(/\D/g, '');
-      query = `SELECT * FROM ${table} WHERE thai_id = $1 AND is_active = TRUE`;
+      query = `SELECT * FROM users WHERE thai_id = $1 AND user_type = 'thai' AND is_active = TRUE`;
       params = [cleanId];
     } else {
       if (!passport) {
@@ -269,7 +264,7 @@ router.post('/login', async (req, res) => {
           message_en: 'Passport number is required',
         });
       }
-      query = `SELECT * FROM ${table} WHERE passport = $1 AND is_active = TRUE`;
+      query = `SELECT * FROM users WHERE passport = $1 AND user_type = 'foreign' AND is_active = TRUE`;
       params = [passport];
     }
 
@@ -296,17 +291,16 @@ router.post('/login', async (req, res) => {
     }
 
     // --- Generate tokens ---
-    const userWithType = { ...user, user_type: userType };
-    const { accessToken, refreshToken } = generateTokens(userWithType);
+    const { accessToken, refreshToken } = generateTokens(user);
 
     // --- Save refresh token (clean old ones first) ---
     await pool.query(
-      'DELETE FROM refresh_tokens WHERE (user_id = $1 AND user_type = $2) OR expires_at < NOW()',
-      [user.id, userType]
+      'DELETE FROM refresh_tokens WHERE user_id = $1 OR expires_at < NOW()',
+      [user.id]
     );
     await pool.query(
-      'INSERT INTO refresh_tokens (user_id, user_type, token, expires_at) VALUES ($1, $2, $3, $4)',
-      [user.id, userType, refreshToken, getRefreshExpiry()]
+      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, refreshToken, getRefreshExpiry()]
     );
 
     res.json({
@@ -314,7 +308,7 @@ router.post('/login', async (req, res) => {
       message: 'เข้าสู่ระบบสำเร็จ',
       message_en: 'Login successful',
       data: {
-        user: sanitizeUser(user, userType),
+        user: sanitizeUser(user),
         accessToken,
         refreshToken,
       },
@@ -357,8 +351,8 @@ router.post('/refresh', async (req, res) => {
 
     // Check if token exists in DB
     const [tokens] = await pool.query(
-      'SELECT * FROM refresh_tokens WHERE token = $1 AND user_id = $2 AND user_type = $3 AND expires_at > NOW()',
-      [refreshToken, decoded.id, decoded.user_type]
+      'SELECT * FROM refresh_tokens WHERE token = $1 AND user_id = $2 AND expires_at > NOW()',
+      [refreshToken, decoded.id]
     );
 
     if (tokens.length === 0) {
@@ -370,8 +364,7 @@ router.post('/refresh', async (req, res) => {
     }
 
     // Get user from the correct table
-    const table = getTable(decoded.user_type);
-    const [users] = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND is_active = TRUE`, [decoded.id]);
+    const [users] = await pool.query(`SELECT * FROM users WHERE id = $1 AND is_active = TRUE`, [decoded.id]);
     if (users.length === 0) {
       return res.status(404).json({
         success: false,
@@ -381,22 +374,21 @@ router.post('/refresh', async (req, res) => {
     }
 
     const user = users[0];
-    const userWithType = { ...user, user_type: decoded.user_type };
 
     // Generate new tokens
-    const newTokens = generateTokens(userWithType);
+    const newTokens = generateTokens(user);
 
     // Replace old refresh token
     await pool.query('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
     await pool.query(
-      'INSERT INTO refresh_tokens (user_id, user_type, token, expires_at) VALUES ($1, $2, $3, $4)',
-      [user.id, decoded.user_type, newTokens.refreshToken, getRefreshExpiry()]
+      'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, newTokens.refreshToken, getRefreshExpiry()]
     );
 
     res.json({
       success: true,
       data: {
-        user: sanitizeUser(user, decoded.user_type),
+        user: sanitizeUser(user),
         accessToken: newTokens.accessToken,
         refreshToken: newTokens.refreshToken,
       },
@@ -429,8 +421,7 @@ router.get('/profile', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Token ไม่ถูกต้องหรือหมดอายุ', code: 'TOKEN_EXPIRED' });
     }
 
-    const table = getTable(decoded.user_type);
-    const [users] = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND is_active = TRUE`, [decoded.id]);
+    const [users] = await pool.query(`SELECT * FROM users WHERE id = $1 AND is_active = TRUE`, [decoded.id]);
 
     if (users.length === 0) {
       return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
@@ -438,7 +429,7 @@ router.get('/profile', async (req, res) => {
 
     res.json({
       success: true,
-      data: { user: sanitizeUser(users[0], decoded.user_type) },
+      data: { user: sanitizeUser(users[0]) },
     });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -464,12 +455,18 @@ router.put('/profile', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Token ไม่ถูกต้องหรือหมดอายุ', code: 'TOKEN_EXPIRED' });
     }
 
-    const table = getTable(decoded.user_type);
     const { birth_date, blood_type, allergies, phone } = req.body;
+
+    // Get user to determine type
+    const [currentUser] = await pool.query(`SELECT user_type FROM users WHERE id = $1`, [decoded.id]);
+    if (currentUser.length === 0) {
+      return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้งาน' });
+    }
+    const userType = currentUser[0].user_type;
 
     // Auto-derive gender from title prefix
     let autoGender = null;
-    if (decoded.user_type === 'thai') {
+    if (userType === 'thai') {
       const { title_th, first_name_th, last_name_th } = req.body;
       if (['นาย', 'นพ.'].includes(title_th)) autoGender = 'ชาย';
       else if (['นาง', 'นางสาว', 'พญ.'].includes(title_th)) autoGender = 'หญิง';
@@ -478,7 +475,7 @@ router.put('/profile', async (req, res) => {
         return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อและนามสกุล' });
       }
       await pool.query(
-        `UPDATE ${table} SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
+        `UPDATE users SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
         [title_th || '', first_name_th, last_name_th, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, decoded.id]
       );
     } else {
@@ -490,17 +487,17 @@ router.put('/profile', async (req, res) => {
         return res.status(400).json({ success: false, message: 'กรุณากรอก First Name และ Last Name' });
       }
       await pool.query(
-        `UPDATE ${table} SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
+        `UPDATE users SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
         [title_en || '', first_name_en, last_name_en, nationality || null, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, decoded.id]
       );
     }
 
     // Fetch updated user
-    const [users] = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [decoded.id]);
+    const [users] = await pool.query(`SELECT * FROM users WHERE id = $1`, [decoded.id]);
     res.json({
       success: true,
       message: 'อัปเดตข้อมูลสำเร็จ',
-      data: { user: sanitizeUser(users[0], decoded.user_type) },
+      data: { user: sanitizeUser(users[0]) },
     });
   } catch (error) {
     console.error('Update profile error:', error);

@@ -5,6 +5,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { apiRegister } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { COUNTRIES } from '../data/countries';
 
 const TOTAL_STEPS = 4;
 
@@ -424,14 +425,26 @@ const RegisterPage = () => {
                         icon="fa-passport"
                       />
                     </div>
-                    <FormInput
-                      label="Nationality"
-                      name="nationality"
-                      value={form.nationality}
-                      onChange={handleChange}
-                      placeholder="e.g. Japanese, American"
-                      icon="fa-flag"
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-midnight_text dark:text-white/80 mb-1.5">
+                        Nationality
+                      </label>
+                      <div className="relative">
+                        <i className="fa-solid fa-flag absolute left-3.5 top-1/2 -translate-y-1/2 text-grey dark:text-white/40 text-sm" />
+                        <select
+                          name="nationality"
+                          value={form.nationality}
+                          onChange={handleChange}
+                          className="w-full pl-10 pr-8 py-3 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="">— Select Country —</option>
+                          {COUNTRIES.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-grey dark:text-white/40 text-xs pointer-events-none" />
+                      </div>
+                    </div>
                   </>
                 )}
 

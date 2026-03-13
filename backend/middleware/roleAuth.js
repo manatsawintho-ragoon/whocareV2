@@ -6,8 +6,8 @@ dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// Helper: resolve table name from user type
-const getTable = (userType) => (userType === 'thai' ? 'users_th' : 'users_foreign');
+// Unified users table
+const TABLE = 'users';
 
 // Role hierarchy (higher number = more privilege)
 const ROLE_HIERARCHY = {
@@ -42,9 +42,8 @@ export const requireRole = (...allowedRoles) => {
       const decoded = jwt.verify(token, JWT_SECRET);
 
       // Fetch the user's CURRENT role from DB (not from JWT cache)
-      const table = getTable(decoded.user_type);
       const [users] = await pool.query(
-        `SELECT id, role, is_active FROM ${table} WHERE id = $1`,
+        `SELECT id, role, is_active FROM ${TABLE} WHERE id = $1`,
         [decoded.id]
       );
 
@@ -115,9 +114,8 @@ export const requireMinRole = (minRole) => {
       const decoded = jwt.verify(token, JWT_SECRET);
 
       // Fetch current role from DB
-      const table = getTable(decoded.user_type);
       const [users] = await pool.query(
-        `SELECT id, role, is_active FROM ${table} WHERE id = $1`,
+        `SELECT id, role, is_active FROM ${TABLE} WHERE id = $1`,
         [decoded.id]
       );
 

@@ -1,49 +1,59 @@
 -- ============================================================
--- Whocare Hospital — PostgreSQL / Supabase
--- Complete fresh schema (unified users, no user_type in aux tables)
+-- Fresh Migration: Drop ALL old tables + recreate from scratch
+-- WARNING: This will DELETE ALL existing data!
+-- Run this when you want a completely fresh database.
 -- ============================================================
 
+-- Drop all tables (order matters due to foreign keys)
+DROP TABLE IF EXISTS refund_requests CASCADE;
+DROP TABLE IF EXISTS balance_transactions CASCADE;
+DROP TABLE IF EXISTS user_balances CASCADE;
+DROP TABLE IF EXISTS booking_locks CASCADE;
+DROP TABLE IF EXISTS bookings CASCADE;
+DROP TABLE IF EXISTS refresh_tokens CASCADE;
+DROP TABLE IF EXISTS audit_logs CASCADE;
+DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS services CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- Drop old/unused tables
+DROP TABLE IF EXISTS users_th CASCADE;
+DROP TABLE IF EXISTS users_foreign CASCADE;
+DROP TABLE IF EXISTS hospitals CASCADE;
+DROP TABLE IF EXISTS "servicesOnHospital" CASCADE;
+DROP TABLE IF EXISTS servicesonhospital CASCADE;
+
+-- Drop old enum type and recreate
+DROP TYPE IF EXISTS user_role CASCADE;
+
 -- ============================================================
--- Roles enum type
+-- Now recreate everything from init.sql
 -- ============================================================
+
+-- Role enum
 DO $$ BEGIN
   CREATE TYPE user_role AS ENUM (
-    'super_admin',
-    'doctor',
-    'nurse',
-    'reception',
-    'accountant',
-    'manager',
-    'patient'
+    'super_admin', 'doctor', 'nurse', 'reception',
+    'accountant', 'manager', 'patient'
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
--- ============================================================
--- Users table (unified Thai + Foreign)
--- ============================================================
-CREATE TABLE IF NOT EXISTS users (
+-- Users
+CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   user_type VARCHAR(10) NOT NULL CHECK (user_type IN ('thai', 'foreign')),
-
-  -- Thai fields (filled when user_type = 'thai')
   title_th VARCHAR(20),
   first_name_th VARCHAR(100),
   last_name_th VARCHAR(100),
   thai_id VARCHAR(13),
-
-  -- Foreign fields (filled when user_type = 'foreign')
   title_en VARCHAR(10),
   first_name_en VARCHAR(100),
   last_name_en VARCHAR(100),
   passport VARCHAR(20),
   nationality VARCHAR(100),
-
-  -- Role
   role user_role DEFAULT 'patient',
-
-  -- Common fields
   birth_date DATE,
   gender VARCHAR(20),
   blood_type VARCHAR(10),
@@ -51,22 +61,18 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(20),
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-
-  -- Metadata
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_thai_id ON users (thai_id) WHERE thai_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_passport ON users (passport) WHERE passport IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
+CREATE UNIQUE INDEX idx_users_thai_id ON users (thai_id) WHERE thai_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_users_passport ON users (passport) WHERE passport IS NOT NULL;
+CREATE INDEX idx_users_email ON users (email);
+CREATE INDEX idx_users_role ON users (role);
 
--- ============================================================
 -- Refresh tokens
--- ============================================================
-CREATE TABLE IF NOT EXISTS refresh_tokens (
+CREATE TABLE refresh_tokens (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token VARCHAR(500) NOT NULL,
@@ -74,13 +80,11 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens (token);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+CREATE INDEX idx_refresh_tokens_token ON refresh_tokens (token);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
 
--- ============================================================
 -- Audit logs
--- ============================================================
-CREATE TABLE IF NOT EXISTS audit_logs (
+CREATE TABLE audit_logs (
   id SERIAL PRIMARY KEY,
   actor_id INT NOT NULL,
   action VARCHAR(100) NOT NULL,
@@ -92,14 +96,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs (actor_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs (action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC);
+CREATE INDEX idx_audit_logs_actor ON audit_logs (actor_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs (action);
+CREATE INDEX idx_audit_logs_created ON audit_logs (created_at DESC);
 
--- ============================================================
--- Role permissions matrix
--- ============================================================
-CREATE TABLE IF NOT EXISTS role_permissions (
+-- Role permissions
+CREATE TABLE role_permissions (
   id SERIAL PRIMARY KEY,
   role VARCHAR(20) NOT NULL,
   module VARCHAR(50) NOT NULL,
@@ -113,41 +115,39 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 );
 
 INSERT INTO role_permissions (role, module, can_read, can_create, can_update, can_delete) VALUES
-('super_admin', 'users',        TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'patients',     TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'diagnosis',    TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'prescriptions',TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'users', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'patients', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'diagnosis', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'prescriptions', TRUE, TRUE, TRUE, TRUE),
 ('super_admin', 'appointments', TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'billing',      TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'reports',      TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'settings',     TRUE, TRUE, TRUE, TRUE),
-('super_admin', 'audit_logs',   TRUE, FALSE, FALSE, FALSE),
-('super_admin', 'permissions',  TRUE, TRUE, TRUE, TRUE),
-('doctor', 'patients',     TRUE, FALSE, TRUE, FALSE),
-('doctor', 'diagnosis',    TRUE, TRUE, TRUE, FALSE),
-('doctor', 'prescriptions',TRUE, TRUE, TRUE, FALSE),
+('super_admin', 'billing', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'reports', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'settings', TRUE, TRUE, TRUE, TRUE),
+('super_admin', 'audit_logs', TRUE, FALSE, FALSE, FALSE),
+('super_admin', 'permissions', TRUE, TRUE, TRUE, TRUE),
+('doctor', 'patients', TRUE, FALSE, TRUE, FALSE),
+('doctor', 'diagnosis', TRUE, TRUE, TRUE, FALSE),
+('doctor', 'prescriptions', TRUE, TRUE, TRUE, FALSE),
 ('doctor', 'appointments', TRUE, FALSE, FALSE, FALSE),
-('nurse', 'patients',      TRUE, FALSE, TRUE, FALSE),
-('nurse', 'diagnosis',     TRUE, FALSE, FALSE, FALSE),
+('nurse', 'patients', TRUE, FALSE, TRUE, FALSE),
+('nurse', 'diagnosis', TRUE, FALSE, FALSE, FALSE),
 ('nurse', 'prescriptions', TRUE, FALSE, FALSE, FALSE),
-('nurse', 'appointments',  TRUE, FALSE, TRUE, FALSE),
-('reception', 'patients',     TRUE, TRUE, TRUE, FALSE),
+('nurse', 'appointments', TRUE, FALSE, TRUE, FALSE),
+('reception', 'patients', TRUE, TRUE, TRUE, FALSE),
 ('reception', 'appointments', TRUE, TRUE, TRUE, TRUE),
-('accountant', 'billing',  TRUE, TRUE, TRUE, FALSE),
-('accountant', 'reports',  TRUE, FALSE, FALSE, FALSE),
+('accountant', 'billing', TRUE, TRUE, TRUE, FALSE),
+('accountant', 'reports', TRUE, FALSE, FALSE, FALSE),
 ('accountant', 'patients', TRUE, FALSE, FALSE, FALSE),
-('manager', 'reports',      TRUE, FALSE, FALSE, FALSE),
-('manager', 'patients',     TRUE, FALSE, FALSE, FALSE),
-('manager', 'billing',      TRUE, FALSE, FALSE, FALSE),
+('manager', 'reports', TRUE, FALSE, FALSE, FALSE),
+('manager', 'patients', TRUE, FALSE, FALSE, FALSE),
+('manager', 'billing', TRUE, FALSE, FALSE, FALSE),
 ('manager', 'appointments', TRUE, FALSE, FALSE, FALSE),
 ('patient', 'appointments', TRUE, TRUE, FALSE, FALSE),
-('patient', 'billing',      TRUE, FALSE, FALSE, FALSE)
+('patient', 'billing', TRUE, FALSE, FALSE, FALSE)
 ON CONFLICT (role, module) DO NOTHING;
 
--- ============================================================
 -- Services
--- ============================================================
-CREATE TABLE IF NOT EXISTS services (
+CREATE TABLE services (
   id SERIAL PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
   description TEXT DEFAULT '',
@@ -165,13 +165,11 @@ CREATE TABLE IF NOT EXISTS services (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_services_category ON services (category);
-CREATE INDEX IF NOT EXISTS idx_services_is_active ON services (is_active);
+CREATE INDEX idx_services_category ON services (category);
+CREATE INDEX idx_services_is_active ON services (is_active);
 
--- ============================================================
 -- Bookings
--- ============================================================
-CREATE TABLE IF NOT EXISTS bookings (
+CREATE TABLE bookings (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   service_id INT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -192,17 +190,15 @@ CREATE TABLE IF NOT EXISTS bookings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_unique_slot
+CREATE UNIQUE INDEX idx_bookings_unique_slot
   ON bookings (service_id, booking_date, booking_time)
   WHERE status NOT IN ('cancelled');
-CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id);
-CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings (booking_date);
-CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings (status);
+CREATE INDEX idx_bookings_user ON bookings (user_id);
+CREATE INDEX idx_bookings_date ON bookings (booking_date);
+CREATE INDEX idx_bookings_status ON bookings (status);
 
--- ============================================================
--- Booking locks (temporary hold while user is booking)
--- ============================================================
-CREATE TABLE IF NOT EXISTS booking_locks (
+-- Booking locks
+CREATE TABLE booking_locks (
   id SERIAL PRIMARY KEY,
   service_id INT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
   booking_date DATE NOT NULL,
@@ -213,22 +209,18 @@ CREATE TABLE IF NOT EXISTS booking_locks (
   UNIQUE (service_id, booking_date, booking_time)
 );
 
-CREATE INDEX IF NOT EXISTS idx_booking_locks_expires ON booking_locks (expires_at);
+CREATE INDEX idx_booking_locks_expires ON booking_locks (expires_at);
 
--- ============================================================
--- User balances (wallet)
--- ============================================================
-CREATE TABLE IF NOT EXISTS user_balances (
+-- User balances
+CREATE TABLE user_balances (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   balance DECIMAL(12,2) DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ============================================================
--- Balance transactions ledger
--- ============================================================
-CREATE TABLE IF NOT EXISTS balance_transactions (
+-- Balance transactions
+CREATE TABLE balance_transactions (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type VARCHAR(30) NOT NULL CHECK (type IN ('deposit','payment','refund','withdraw','adjustment')),
@@ -239,13 +231,11 @@ CREATE TABLE IF NOT EXISTS balance_transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_balance_tx_user ON balance_transactions (user_id);
-CREATE INDEX IF NOT EXISTS idx_balance_tx_booking ON balance_transactions (booking_id);
+CREATE INDEX idx_balance_tx_user ON balance_transactions (user_id);
+CREATE INDEX idx_balance_tx_booking ON balance_transactions (booking_id);
 
--- ============================================================
--- Refund requests (multi-role approval)
--- ============================================================
-CREATE TABLE IF NOT EXISTS refund_requests (
+-- Refund requests
+CREATE TABLE refund_requests (
   id SERIAL PRIMARY KEY,
   booking_id INT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -262,13 +252,11 @@ CREATE TABLE IF NOT EXISTS refund_requests (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_refund_requests_booking ON refund_requests (booking_id);
-CREATE INDEX IF NOT EXISTS idx_refund_requests_user ON refund_requests (user_id);
-CREATE INDEX IF NOT EXISTS idx_refund_requests_status ON refund_requests (status);
+CREATE INDEX idx_refund_requests_booking ON refund_requests (booking_id);
+CREATE INDEX idx_refund_requests_user ON refund_requests (user_id);
+CREATE INDEX idx_refund_requests_status ON refund_requests (status);
 
--- ============================================================
 -- Trigger: auto-update updated_at
--- ============================================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -277,7 +265,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+SELECT 'Fresh migration completed — all tables created!' as status;

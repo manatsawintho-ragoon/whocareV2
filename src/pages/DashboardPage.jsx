@@ -72,6 +72,7 @@ const DashboardPage = () => {
         { icon: 'mdi:finance', label: 'จัดการการเงิน', desc: 'ภาพรวมการเงิน / คืนเงิน', to: '/admin/finance', color: 'indigo' },
         { icon: 'mdi:shield-check', label: 'จัดการสิทธิ์', desc: 'Permission Matrix', to: '/admin/permissions', color: 'amber' },
         { icon: 'mdi:file-document-outline', label: 'Audit Log', desc: 'ประวัติการใช้งานระบบ', to: '/admin/audit-logs', color: 'purple' },
+        { icon: 'mdi:newspaper-variant-multiple', label: 'จัดการบทความ', desc: 'เขียน / แก้ไข / เผยแพร่บทความ', to: '/admin/news', color: 'pink' },
       );
     }
 
@@ -82,6 +83,7 @@ const DashboardPage = () => {
         { icon: 'mdi:calendar-clock', label: 'จัดการนัดหมาย', desc: 'ภาพรวมนัดหมายทั้งหมด', to: '/admin/appointments', color: 'blue' },
         { icon: 'mdi:account-group', label: 'จัดการผู้ใช้', desc: 'สร้าง / แก้ไข / ลบ / กำหนด Role', to: '/admin/users', color: 'red' },
         { icon: 'mdi:finance', label: 'จัดการการเงิน', desc: 'ภาพรวมการเงิน / คืนเงิน', to: '/admin/finance', color: 'indigo' },
+        { icon: 'mdi:newspaper-variant-multiple', label: 'จัดการบทความ', desc: 'เขียน / แก้ไข / เผยแพร่บทความ', to: '/admin/news', color: 'pink' },
       );
     }
 
@@ -89,6 +91,7 @@ const DashboardPage = () => {
     if (role === 'doctor') {
       items.push(
         { icon: 'mdi:calendar-check', label: 'ตารางนัด', desc: 'ดูตารางนัดของตัวเอง', to: '/admin/appointments', color: 'purple' },
+        { icon: 'mdi:newspaper-variant-multiple', label: 'จัดการบทความ', desc: 'เขียนบทความสุขภาพ', to: '/admin/news', color: 'pink' },
       );
     }
 

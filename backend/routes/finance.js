@@ -10,15 +10,16 @@ const router = Router();
 // ============================================================
 router.get('/doctors', authMiddleware, async (req, res) => {
   try {
-    const [thDocs] = await pool.query(
-      `SELECT id, 'thai' as user_type, title_th as title, first_name_th as first_name, last_name_th as last_name FROM users_th WHERE role = 'doctor' AND is_active = TRUE ORDER BY first_name_th`
+    const [docs] = await pool.query(
+      `SELECT id, user_type,
+        CASE WHEN user_type = 'thai' THEN title_th ELSE title_en END as title,
+        CASE WHEN user_type = 'thai' THEN first_name_th ELSE first_name_en END as first_name,
+        CASE WHEN user_type = 'thai' THEN last_name_th ELSE last_name_en END as last_name
+       FROM users WHERE role = 'doctor' AND is_active = TRUE
+       ORDER BY CASE WHEN user_type = 'thai' THEN first_name_th ELSE first_name_en END`
     );
-    const [frDocs] = await pool.query(
-      `SELECT id, 'foreign' as user_type, title_en as title, first_name_en as first_name, last_name_en as last_name FROM users_foreign WHERE role = 'doctor' AND is_active = TRUE ORDER BY first_name_en`
-    );
-    const doctors = [...thDocs, ...frDocs].map((d) => ({
+    const doctors = docs.map((d) => ({
       id: d.id,
-      user_type: d.user_type,
       name: `${d.title || ''} ${d.first_name || ''} ${d.last_name || ''}`.trim(),
     }));
     res.json({ success: true, data: doctors });
@@ -34,9 +35,8 @@ router.get('/doctors', authMiddleware, async (req, res) => {
 router.get('/balance', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    const userType = req.user.user_type || 'thai';
     const [rows] = await pool.query(
-      `SELECT balance FROM user_balances WHERE user_id = $1 AND user_type = $2`, [userId, userType]
+      `SELECT balance FROM user_balances WHERE user_id = $1`, [userId]
     );
     const balance = rows.length > 0 ? parseFloat(rows[0].balance) : 0;
     res.json({ success: true, data: { balance } });
@@ -60,23 +60,22 @@ router.post('/deposit', authMiddleware, async (req, res) => {
     }
 
     const userId = req.user.id;
-    const userType = req.user.user_type || 'thai';
 
     await client.query('BEGIN');
 
     // Upsert balance with row-level lock
     const balResult = await client.query(
-      `INSERT INTO user_balances (user_id, user_type, balance, updated_at) VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (user_id, user_type) DO UPDATE SET balance = user_balances.balance + $3, updated_at = NOW()
+      `INSERT INTO user_balances (user_id, balance, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET balance = user_balances.balance + $2, updated_at = NOW()
        RETURNING balance`,
-      [userId, userType, depositAmount]
+      [userId, depositAmount]
     );
     const newBalance = parseFloat(balResult.rows[0].balance);
 
     // Record transaction
     await client.query(
-      `INSERT INTO balance_transactions (user_id, user_type, type, amount, balance_after, description) VALUES ($1, $2, 'deposit', $3, $4, $5)`,
-      [userId, userType, depositAmount, newBalance, `เติมเงิน ฿${depositAmount.toLocaleString()}`]
+      `INSERT INTO balance_transactions (user_id, type, amount, balance_after, description) VALUES ($1, 'deposit', $2, $3, $4)`,
+      [userId, depositAmount, newBalance, `เติมเงิน ฿${depositAmount.toLocaleString()}`]
     );
 
     await client.query('COMMIT');
@@ -108,14 +107,13 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
     }
 
     const userId = req.user.id;
-    const userType = req.user.user_type || 'thai';
 
     await client.query('BEGIN');
 
     // Check balance with row-level lock
     const balRows = await client.query(
-      `SELECT balance FROM user_balances WHERE user_id = $1 AND user_type = $2 FOR UPDATE`,
-      [userId, userType]
+      `SELECT balance FROM user_balances WHERE user_id = $1 FOR UPDATE`,
+      [userId]
     );
     const currentBalance = balRows.rows.length > 0 ? parseFloat(balRows.rows[0].balance) : 0;
 
@@ -127,15 +125,15 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
 
     // Deduct balance
     const updResult = await client.query(
-      `UPDATE user_balances SET balance = balance - $1, updated_at = NOW() WHERE user_id = $2 AND user_type = $3 RETURNING balance`,
-      [withdrawAmount, userId, userType]
+      `UPDATE user_balances SET balance = balance - $1, updated_at = NOW() WHERE user_id = $2 RETURNING balance`,
+      [withdrawAmount, userId]
     );
     const newBalance = parseFloat(updResult.rows[0].balance);
 
     // Record transaction
     await client.query(
-      `INSERT INTO balance_transactions (user_id, user_type, type, amount, balance_after, description) VALUES ($1, $2, 'withdraw', $3, $4, $5)`,
-      [userId, userType, withdrawAmount, newBalance, `ถอนเงิน ฿${withdrawAmount.toLocaleString()} → ${bank_name} ${account_number}`]
+      `INSERT INTO balance_transactions (user_id, type, amount, balance_after, description) VALUES ($1, 'withdraw', $2, $3, $4)`,
+      [userId, withdrawAmount, newBalance, `ถอนเงิน ฿${withdrawAmount.toLocaleString()} → ${bank_name} ${account_number}`]
     );
 
     await client.query('COMMIT');
@@ -155,12 +153,11 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
 router.get('/transactions', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    const userType = req.user.user_type || 'thai';
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const [countRes] = await pool.query(
-      `SELECT COUNT(*) as total FROM balance_transactions WHERE user_id = $1 AND user_type = $2`, [userId, userType]
+      `SELECT COUNT(*) as total FROM balance_transactions WHERE user_id = $1`, [userId]
     );
     const total = parseInt(countRes[0].total);
 
@@ -169,9 +166,9 @@ router.get('/transactions', authMiddleware, async (req, res) => {
        FROM balance_transactions bt
        LEFT JOIN bookings b ON b.id = bt.booking_id
        LEFT JOIN services s ON s.id = b.service_id
-       WHERE bt.user_id = $1 AND bt.user_type = $2
-       ORDER BY bt.created_at DESC LIMIT $3 OFFSET $4`,
-      [userId, userType, parseInt(limit), offset]
+       WHERE bt.user_id = $1
+       ORDER BY bt.created_at DESC LIMIT $2 OFFSET $3`,
+      [userId, parseInt(limit), offset]
     );
 
     res.json({ success: true, data: { transactions, pagination: { page: parseInt(page), total, totalPages: Math.ceil(total / parseInt(limit)) } } });
@@ -189,13 +186,12 @@ router.post('/refund-request', authMiddleware, async (req, res) => {
   try {
     const { booking_id, reason } = req.body;
     const userId = req.user.id;
-    const userType = req.user.user_type || 'thai';
 
     await client.query('BEGIN');
 
     // Lock booking row
     const bResult = await client.query(
-      `SELECT * FROM bookings WHERE id = $1 AND user_id = $2 AND user_type = $3 FOR UPDATE`, [booking_id, userId, userType]
+      `SELECT * FROM bookings WHERE id = $1 AND user_id = $2 FOR UPDATE`, [booking_id, userId]
     );
     if (bResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -223,8 +219,8 @@ router.post('/refund-request', authMiddleware, async (req, res) => {
     const refundAmount = parseFloat(booking.deposit_amount) || 0;
 
     const insResult = await client.query(
-      `INSERT INTO refund_requests (booking_id, user_id, user_type, amount, reason) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [booking_id, userId, userType, refundAmount, reason || '']
+      `INSERT INTO refund_requests (booking_id, user_id, amount, reason) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [booking_id, userId, refundAmount, reason || '']
     );
 
     // Cancel the booking
@@ -355,15 +351,15 @@ router.put('/refund-requests/:id/approve', requireRole('accountant', 'reception'
 
       // Lock user balance row and credit
       const balResult = await client.query(
-        `INSERT INTO user_balances (user_id, user_type, balance, updated_at) VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (user_id, user_type) DO UPDATE SET balance = user_balances.balance + $3, updated_at = NOW()
+        `INSERT INTO user_balances (user_id, balance, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET balance = user_balances.balance + $2, updated_at = NOW()
          RETURNING balance`,
-        [u.user_id, u.user_type, refundAmount]
+        [u.user_id, refundAmount]
       );
 
       await client.query(
-        `INSERT INTO balance_transactions (user_id, user_type, type, amount, balance_after, description, booking_id) VALUES ($1, $2, 'refund', $3, $4, $5, $6)`,
-        [u.user_id, u.user_type, refundAmount, parseFloat(balResult.rows[0].balance), `คืนเงินมัดจำ #${u.booking_id}`, u.booking_id]
+        `INSERT INTO balance_transactions (user_id, type, amount, balance_after, description, booking_id) VALUES ($1, 'refund', $2, $3, $4, $5)`,
+        [u.user_id, refundAmount, parseFloat(balResult.rows[0].balance), `คืนเงินมัดจำ #${u.booking_id}`, u.booking_id]
       );
 
       await client.query('COMMIT');

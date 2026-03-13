@@ -168,29 +168,29 @@ export const apiGetUsers = async (params = {}) => {
   return response.json();
 };
 
-export const apiUpdateUserRole = async (userType, userId, role) => {
-  const response = await apiFetch(`/admin/users/${userType}/${userId}/role`, {
+export const apiUpdateUserRole = async (userId, role) => {
+  const response = await apiFetch(`/admin/users/${userId}/role`, {
     method: 'PUT',
     body: JSON.stringify({ role }),
   });
   return response.json();
 };
 
-export const apiToggleUserStatus = async (userType, userId, isActive) => {
-  const response = await apiFetch(`/admin/users/${userType}/${userId}/status`, {
+export const apiToggleUserStatus = async (userId, isActive) => {
+  const response = await apiFetch(`/admin/users/${userId}/status`, {
     method: 'PUT',
     body: JSON.stringify({ is_active: isActive }),
   });
   return response.json();
 };
 
-export const apiGetUserDetail = async (userType, userId) => {
-  const response = await apiFetch(`/admin/users/${userType}/${userId}`);
+export const apiGetUserDetail = async (userId) => {
+  const response = await apiFetch(`/admin/users/${userId}`);
   return response.json();
 };
 
-export const apiAdminUpdateUser = async (userType, userId, data) => {
-  const response = await apiFetch(`/admin/users/${userType}/${userId}`, {
+export const apiAdminUpdateUser = async (userId, data) => {
+  const response = await apiFetch(`/admin/users/${userId}`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
@@ -397,5 +397,99 @@ export const apiRejectRefund = async (id) => {
 
 export const apiGetFinanceDashboard = async () => {
   const response = await apiFetch('/finance/dashboard');
+  return response.json();
+};
+
+// ============================================================
+// News API (Public)
+// ============================================================
+export const apiGetPublicNews = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(`${API_BASE}/news?${query}`);
+  return response.json();
+};
+
+export const apiGetNewsDetail = async (slug) => {
+  const response = await fetch(`${API_BASE}/news/detail/${slug}`);
+  return response.json();
+};
+
+export const apiGetNewsCategories = async () => {
+  const response = await fetch(`${API_BASE}/news/categories`);
+  return response.json();
+};
+
+export const apiGetNewsTags = async () => {
+  const response = await fetch(`${API_BASE}/news/tags`);
+  return response.json();
+};
+
+export const apiGetFeaturedNews = async (contentType) => {
+  const params = contentType ? `?content_type=${contentType}` : '';
+  const response = await fetch(`${API_BASE}/news/featured${params}`);
+  return response.json();
+};
+
+// ============================================================
+// News API (Admin)
+// ============================================================
+export const apiGetNewsStats = async () => {
+  const response = await apiFetch('/news/admin/stats');
+  return response.json();
+};
+
+export const apiGetAdminNews = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const response = await apiFetch(`/news/admin/list?${query}`);
+  return response.json();
+};
+
+export const apiGetAdminArticle = async (id) => {
+  const response = await apiFetch(`/news/admin/${id}`);
+  return response.json();
+};
+
+export const apiCreateArticle = async (data) => {
+  const response = await apiFetch('/news/admin', { method: 'POST', body: JSON.stringify(data) });
+  return response.json();
+};
+
+export const apiUpdateArticle = async (id, data) => {
+  const response = await apiFetch(`/news/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  return response.json();
+};
+
+export const apiChangeArticleStatus = async (id, status, note) => {
+  const response = await apiFetch(`/news/admin/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, note }) });
+  return response.json();
+};
+
+export const apiSubmitArticle = async (id) => {
+  const response = await apiFetch(`/news/admin/${id}/submit`, { method: 'PUT' });
+  return response.json();
+};
+
+export const apiDeleteArticle = async (id) => {
+  const response = await apiFetch(`/news/admin/${id}`, { method: 'DELETE' });
+  return response.json();
+};
+
+export const apiGetAdminCategories = async () => {
+  const response = await apiFetch('/news/admin/categories');
+  return response.json();
+};
+
+export const apiCreateCategory = async (data) => {
+  const response = await apiFetch('/news/admin/categories', { method: 'POST', body: JSON.stringify(data) });
+  return response.json();
+};
+
+export const apiDeleteCategory = async (id) => {
+  const response = await apiFetch(`/news/admin/categories/${id}`, { method: 'DELETE' });
+  return response.json();
+};
+
+export const apiDeleteTag = async (id) => {
+  const response = await apiFetch(`/news/admin/tags/${id}`, { method: 'DELETE' });
   return response.json();
 };

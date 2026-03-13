@@ -117,7 +117,7 @@ const AuditLogsPage = () => {
                           )}
                         </div>
                         <p className="text-[11px] text-grey/60 dark:text-white/30 mt-1">
-                          ดำเนินการโดย: #{log.actor_id} ({log.actor_type}) • IP: {log.ip_address || '-'} • {formatDate(log.created_at)}
+                          ดำเนินการโดย: #{log.actor_id} • IP: {log.ip_address || '-'} • {formatDate(log.created_at)}
                         </p>
                       </div>
                     </div>

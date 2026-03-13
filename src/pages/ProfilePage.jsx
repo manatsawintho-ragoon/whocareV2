@@ -6,6 +6,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { useAuth, ROLE_CONFIG } from '../context/AuthContext';
 import { apiGetProfile, apiUpdateProfile } from '../services/api';
+import { COUNTRIES } from '../data/countries';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
@@ -325,7 +326,10 @@ const ProfilePage = () => {
                   </div>
                   <div>
                     <label className={labelClass}>Nationality</label>
-                    <input type="text" name="nationality" value={form.nationality || ''} onChange={handleChange} className={inputClass} />
+                    <select name="nationality" value={form.nationality || ''} onChange={handleChange} className={inputClass}>
+                      <option value="">-- Select --</option>
+                      {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
                 </>
               )}

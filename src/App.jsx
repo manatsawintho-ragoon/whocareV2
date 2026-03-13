@@ -7,7 +7,7 @@ import './style/style.css';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import ServicesSection from './components/ServicesSection';
-import Contact from './components/Contact';
+import FeaturedArticles from './components/FeaturedArticles';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -27,6 +27,9 @@ const BookingPage = lazy(() => import('./pages/BookingPage'));
 const AppointmentManagementPage = lazy(() => import('./pages/AppointmentManagementPage'));
 const MyBookingsPage = lazy(() => import('./pages/MyBookingsPage'));
 const FinanceDashboardPage = lazy(() => import('./pages/FinanceDashboardPage'));
+const NewsManagePage = lazy(() => import('./pages/NewsManagePage'));
+const NewsListPage = lazy(() => import('./pages/NewsListPage'));
+const NewsDetailPage = lazy(() => import('./pages/NewsDetailPage'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-section dark:bg-darkmode">
@@ -40,7 +43,7 @@ function HomePage() {
       <main>
         <Hero />
         <ServicesSection />
-        <Contact />
+        <FeaturedArticles />
       </main>
       <Footer />
     </>
@@ -130,6 +133,20 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/news"
+          element={
+            <ProtectedRoute roles={['doctor', 'manager', 'super_admin']}>
+              <NewsManagePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/articles" element={<NewsListPage contentType="article" />} />
+        <Route path="/articles/:category" element={<NewsListPage contentType="article" />} />
+        <Route path="/articles/:category/:slug" element={<NewsDetailPage contentType="article" />} />
+        <Route path="/news" element={<NewsListPage contentType="news" />} />
+        <Route path="/news/:category" element={<NewsListPage contentType="news" />} />
+        <Route path="/news/:category/:slug" element={<NewsDetailPage contentType="news" />} />
         </Routes>
       </Suspense>
       <ScrollToTop />
