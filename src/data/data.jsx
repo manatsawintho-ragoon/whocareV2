@@ -9,6 +9,8 @@ export const menuItems = [
       { name: "นัดหมาย", desc: "นัดหมายแพทย์ออนไลน์", href: "/appointment", icon: "mdi:calendar-clock" },
       { name: "แนะนำบริการ", desc: "บริการทั้งหมดของเรา", href: "/services", icon: "mdi:hand-heart" },
       { name: "แพ็กเกจ & โปรโมชั่น", desc: "โปรโมชั่นและแพ็กเกจพิเศษ", href: "/packages", icon: "mdi:tag-multiple" },
+      { name: "ศูนย์ทางการแพทย์", desc: "ศูนย์การแพทย์เฉพาะทาง", href: "/medical-center", icon: "mdi:hospital-building" },
+      { name: "ชำระค่าบริการ", desc: "ชำระเงินออนไลน์", href: "/payment", icon: "mdi:credit-card" },
       { name: "นโยบายการคืนเงิน", desc: "เงื่อนไขการคืนเงิน", href: "/refund-policy", icon: "mdi:cash-refund" },
     ],
   },

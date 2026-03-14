@@ -4,13 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { apiGetPublicServices } from '../services/api';
 
 const TABS = [
-  { key: 'all',       label: 'ดูทั้งหมด',      icon: 'mdi:view-grid' },
-  { key: 'checkup',   label: 'ตรวจสุขภาพ',    icon: 'mdi:stethoscope' },
-  { key: 'vaccine',   label: 'วัคซีน',         icon: 'mdi:needle' },
-  { key: 'screening', label: 'คัดกรองมะเร็ง',  icon: 'mdi:radiology-box' },
-  { key: 'beauty',    label: 'ความงาม',        icon: 'mdi:face-woman-shimmer' },
-  { key: 'dental',    label: 'ทันตกรรม',       icon: 'mdi:tooth' },
-  { key: 'general',   label: 'ทั่วไป',          icon: 'mdi:hospital-box' },
+  { key: 'all', label: 'ดูทั้งหมด' },
+  { key: 'recommended', label: 'แนะนำบริการ' },
+  { key: 'promotion', label: 'โปรโมชั่น' },
 ];
 
 const ServicesSection = () => {
@@ -18,11 +14,9 @@ const ServicesSection = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const [favorites, setFavorites] = useState({});
   const scrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  const [activeDot, setActiveDot] = useState(0);
 
   // Drag-to-scroll state
   const isDragging = useRef(false);
@@ -42,9 +36,12 @@ const ServicesSection = () => {
     setLoading(true);
     try {
       const params = {};
-      if (activeTab !== 'all') params.category = activeTab;
+      if (activeTab === 'recommended') params.recommended = 'true';
+      if (activeTab === 'promotion') params.promotion = 'true';
       const result = await apiGetPublicServices(params);
-      if (result.success) setServices(result.data || []);
+      if (result.success) {
+        setServices(result.data || []);
+      }
     } catch {
       // ignore
     } finally {
@@ -57,8 +54,6 @@ const ServicesSection = () => {
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 0);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-    const cardWidth = 280;
-    setActiveDot(Math.round(el.scrollLeft / cardWidth));
   };
 
   useEffect(() => {
@@ -75,11 +70,8 @@ const ServicesSection = () => {
   const scroll = (dir) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -300 : 300, behavior: 'smooth' });
-  };
-
-  const toggleFavorite = (id) => {
-    setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
+    const amount = 300;
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
   };
 
   // Dark grab cursor data URI
@@ -147,7 +139,7 @@ const ServicesSection = () => {
 
   const formatPrice = (val) => {
     const num = parseFloat(val);
-    if (!num && num !== 0) return null;
+    if (!num && num !== 0) return '-';
     return num.toLocaleString('th-TH');
   };
 
@@ -163,22 +155,11 @@ const ServicesSection = () => {
     return Math.round((1 - curr / orig) * 100);
   };
 
-  const formatPriceRange = (min, max) => {
-    const a = formatPrice(min);
-    const b = formatPrice(max);
-    if (!a) return null;
-    if (!b) return `${a} THB`;
-    return `${a} - ${b} THB`;
-  };
-
-  const totalDots = Math.max(0, services.length - 3);
-
   return (
     <section className="py-16 bg-white dark:bg-darklight">
       <div className="container mx-auto max-w-6xl px-4">
-
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8" data-aos="fade-up">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8" data-aos="fade-up">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-midnight_text dark:text-white">
               แพ็กเกจและโปรโมชั่น
@@ -186,19 +167,18 @@ const ServicesSection = () => {
             <div className="w-12 h-1 bg-primary rounded-full mt-2" />
           </div>
 
-          {/* Category tabs */}
+          {/* Tabs */}
           <div className="flex flex-wrap gap-2">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
                   activeTab === tab.key
-                    ? 'bg-primary text-white border-primary shadow-sm'
+                    ? 'bg-primary text-white border-primary'
                     : 'bg-white dark:bg-darkmode text-midnight_text dark:text-white border-border dark:border-dark_border hover:border-primary hover:text-primary'
                 }`}
               >
-                <Icon icon={tab.icon} width="15" />
                 {tab.label}
               </button>
             ))}
@@ -211,7 +191,7 @@ const ServicesSection = () => {
           {canScrollLeft && (
             <button
               onClick={() => scroll('left')}
-              className="absolute -left-4 top-[40%] -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white dark:bg-darkmode shadow-lg border border-border dark:border-dark_border flex items-center justify-center text-midnight_text hover:bg-primary hover:text-white hover:border-primary transition-all cursor-pointer"
+              className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white dark:bg-darkmode shadow-lg border border-border dark:border-dark_border flex items-center justify-center text-midnight_text hover:bg-primary hover:text-white hover:border-primary transition-all cursor-pointer"
             >
               <Icon icon="mdi:chevron-left" width="24" />
             </button>
@@ -221,13 +201,13 @@ const ServicesSection = () => {
           {canScrollRight && (
             <button
               onClick={() => scroll('right')}
-              className="absolute -right-4 top-[40%] -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white dark:bg-darkmode shadow-lg border border-border dark:border-dark_border flex items-center justify-center text-midnight_text hover:bg-primary hover:text-white hover:border-primary transition-all cursor-pointer"
+              className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white dark:bg-darkmode shadow-lg border border-border dark:border-dark_border flex items-center justify-center text-midnight_text hover:bg-primary hover:text-white hover:border-primary transition-all cursor-pointer"
             >
               <Icon icon="mdi:chevron-right" width="24" />
             </button>
           )}
 
-          {/* Scrollable row */}
+          {/* Scrollable container */}
           <div
             ref={scrollRef}
             onMouseDown={handleMouseDown}
@@ -236,7 +216,7 @@ const ServicesSection = () => {
               const touch = e.touches[0];
               isDragging.current = true;
               hasDragged.current = false;
-              dragStartX.current = touch.clientX;
+              dragStartX.current = touch.clientX;   // use clientX
               dragScrollLeft.current = scrollRef.current.scrollLeft;
               dragLastX.current = touch.clientX;
               dragLastTime.current = Date.now();
@@ -259,11 +239,12 @@ const ServicesSection = () => {
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', cursor: CURSOR_GRAB }}
           >
             {loading ? (
+              // Skeleton
               [...Array(4)].map((_, i) => (
                 <div key={i} className="shrink-0 w-[260px] animate-pulse">
-                  <div className="bg-section dark:bg-darkmode rounded-2xl h-[220px]" />
+                  <div className="bg-section dark:bg-darkmode rounded-lg h-[200px]" />
                   <div className="mt-3 h-4 bg-section dark:bg-darkmode rounded w-3/4" />
-                  <div className="mt-2 h-3 bg-section dark:bg-darkmode rounded w-1/3" />
+                  <div className="mt-2 h-3 bg-section dark:bg-darkmode rounded w-1/2" />
                 </div>
               ))
             ) : services.length === 0 ? (
@@ -273,10 +254,14 @@ const ServicesSection = () => {
               </div>
             ) : (
               services.map((s) => (
-                <div key={s.id} className="shrink-0 w-[260px] snap-start group/card">
-                  <div className="bg-white dark:bg-darkmode rounded-2xl border border-border dark:border-dark_border overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col h-full">
+                <div
+                  key={s.id}
+                  className="shrink-0 w-[260px] snap-start group/card"
+                >
+                  {/* Card */}
+                  <div className="bg-white dark:bg-darkmode rounded-lg border border-border dark:border-dark_border overflow-hidden shadow-sm hover:shadow-lg transition-shadow duration-300">
                     {/* Image */}
-                    <div className="relative h-[210px] overflow-hidden">
+                    <div className="relative h-[200px] overflow-hidden">
                       {s.image_url ? (
                         <img
                           src={s.image_url}
@@ -284,58 +269,47 @@ const ServicesSection = () => {
                           className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
                         />
                       ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-section to-blue-50 dark:from-darklight dark:to-darkmode flex items-center justify-center">
-                          <Icon icon="mdi:medical-bag" width="52" className="text-primary/20" />
+                        <div className="w-full h-full bg-section dark:bg-darklight flex items-center justify-center">
+                          <Icon icon="mdi:medical-bag" width="48" className="text-grey/20" />
                         </div>
                       )}
 
-                      {/* Branch watermark — top left */}
+                      {/* Branch badge */}
                       {s.branch && (
-                        <span className="absolute top-3 left-3 flex items-center gap-1.5 bg-white dark:bg-darkmode/90 backdrop-blur-md text-midnight_text dark:text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-xl shadow-md">
-                          <Icon icon="mdi:hospital-building" width="13" className="text-primary shrink-0" />
+                        <span className="absolute top-3 left-3 bg-white/90 dark:bg-darkmode/90 backdrop-blur-sm text-xs font-medium px-2.5 py-1 rounded-lg text-midnight_text dark:text-white flex items-center gap-1">
+                          <Icon icon="mdi:map-marker" width="12" className="text-primary" />
                           {s.branch}
                         </span>
                       )}
 
-                      {/* Heart / Favorite button */}
-                      <button
-                        onClick={() => toggleFavorite(s.id)}
-                        className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white dark:bg-darkmode/90 backdrop-blur-md flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-transform duration-200 cursor-pointer"
-                      >
-                        <Icon
-                          icon={favorites[s.id] ? 'mdi:heart' : 'mdi:heart-outline'}
-                          width="19"
-                          className={favorites[s.id] ? 'text-red-500' : 'text-primary'}
-                        />
+                      {/* Favorite button */}
+                      <button className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 dark:bg-darkmode/80 backdrop-blur-sm flex items-center justify-center text-grey hover:text-red-500 transition-colors cursor-pointer">
+                        <Icon icon="mdi:heart-outline" width="18" />
                       </button>
 
                       {/* Price overlay */}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-3 pt-10 pb-3">
+                      <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
                         {hasDiscount(s) && (
-                          <p className="text-white/60 text-xs line-through leading-tight tracking-wide">
+                          <span className="bg-black/50 backdrop-blur-sm text-white/70 text-xs px-2 py-0.5 rounded line-through">
                             {formatPrice(s.original_price)} THB
-                          </p>
+                          </span>
                         )}
-                        {formatPrice(s.price) && (
-                          <p className="text-white font-extrabold text-base leading-tight drop-shadow">
-                            {formatPrice(s.price)} THB
-                          </p>
-                        )}
+                        <span className="bg-primary/90 backdrop-blur-sm text-white text-sm font-bold px-3 py-1 rounded-lg ml-auto">
+                          {formatPrice(s.price)} THB
+                        </span>
                       </div>
                     </div>
 
                     {/* Content */}
-                    <div className="p-4 flex flex-col gap-3 flex-1">
-                      <h3 className="font-bold text-midnight_text dark:text-white text-sm leading-snug line-clamp-2 min-h-[40px]">
+                    <div className="p-4">
+                      <h3 className="font-semibold text-midnight_text dark:text-white text-sm leading-snug line-clamp-2 min-h-[40px]">
                         {s.name}
                       </h3>
-
-                      {/* Branch badge */}
                       {s.branch && (
-                        <span className="inline-flex items-center self-start gap-1.5 bg-primary/10 text-primary text-xs font-semibold px-3 py-1 rounded-full border border-primary/20">
+                        <p className="text-xs text-grey dark:text-white/40 mt-1 flex items-center gap-1">
                           <Icon icon="mdi:hospital-building" width="12" />
                           {s.branch}
-                        </span>
+                        </p>
                       )}
 
                       {/* Price display */}
@@ -346,7 +320,9 @@ const ServicesSection = () => {
                           </span>
                         )}
                         <span className={`text-sm font-bold ${
-                          hasDiscount(s) ? 'text-primary' : 'text-midnight_text dark:text-white'
+                          hasDiscount(s)
+                            ? 'text-primary'
+                            : 'text-midnight_text dark:text-white'
                         }`}>
                           ฿{formatPrice(s.price)}
                         </span>
@@ -357,7 +333,7 @@ const ServicesSection = () => {
                         )}
                       </div>
 
-                      {/* Action button */}
+                      {/* Action buttons */}
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() => { if (!hasDragged.current) navigate(`/services/${s.id}`); }}
@@ -373,24 +349,6 @@ const ServicesSection = () => {
               ))
             )}
           </div>
-
-          {/* Pagination dots */}
-          {!loading && totalDots > 0 && (
-            <div className="flex justify-start gap-1.5 mt-4 pl-1">
-              {[...Array(totalDots + 1)].map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    const el = scrollRef.current;
-                    if (el) el.scrollTo({ left: i * 280, behavior: 'smooth' });
-                  }}
-                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                    i === activeDot ? 'w-6 bg-primary' : 'w-1.5 bg-border dark:bg-dark_border'
-                  }`}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </section>
@@ -398,4 +356,3 @@ const ServicesSection = () => {
 };
 
 export default ServicesSection;
-

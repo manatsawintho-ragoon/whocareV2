@@ -6,12 +6,12 @@ import { requireRole } from '../middleware/roleAuth.js';
 const router = Router();
 
 // ============================================================
-// GET /api/finance/doctors — List all doctors (public)
+// GET /api/finance/doctors — List all doctors (public for booking)
 // ============================================================
-router.get('/doctors', async (req, res) => {
+router.get('/doctors', authMiddleware, async (req, res) => {
   try {
     const [docs] = await pool.query(
-      `SELECT id, user_type, email, phone, nationality,
+      `SELECT id, user_type,
         CASE WHEN user_type = 'thai' THEN title_th ELSE title_en END as title,
         CASE WHEN user_type = 'thai' THEN first_name_th ELSE first_name_en END as first_name,
         CASE WHEN user_type = 'thai' THEN last_name_th ELSE last_name_en END as last_name
@@ -21,13 +21,6 @@ router.get('/doctors', async (req, res) => {
     const doctors = docs.map((d) => ({
       id: d.id,
       name: `${d.title || ''} ${d.first_name || ''} ${d.last_name || ''}`.trim(),
-      first_name: d.first_name || '',
-      last_name: d.last_name || '',
-      title: d.title || '',
-      email: d.email || '',
-      phone: d.phone || '',
-      nationality: d.nationality || '',
-      user_type: d.user_type,
     }));
     res.json({ success: true, data: doctors });
   } catch (error) {
