@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
-import { apiGetAdminServices, apiCreateService, apiUpdateService, apiDeleteService } from '../services/api';
+import { apiGetAdminServices, apiCreateService, apiUpdateService, apiDeleteService, apiGetBranches } from '../services/api';
 
 const CATEGORIES = [
   { value: 'general', label: 'ทั่วไป' },
@@ -21,9 +21,12 @@ const emptyForm = {
   description: '',
   image_url: '',
   original_price: '',
+  original_price_max: '',
   price: '',
+  price_min: '',
+  price_max: '',
   category: 'general',
-  branch: '',
+  branch_id: '',
   is_recommended: false,
   is_promotion: false,
   is_active: true,
@@ -34,6 +37,7 @@ const ManageServicesPage = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, hasRole } = useAuth();
   const [services, setServices] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -50,6 +54,7 @@ const ManageServicesPage = () => {
     if (!user) { navigate('/login'); return; }
     if (!hasRole('super_admin', 'manager')) { navigate('/dashboard'); return; }
     fetchServices();
+    apiGetBranches().then((r) => { if (r.success) setBranches(r.data); });
   }, [user, authLoading, filterCategory]);
 
   const fetchServices = async (page = 1) => {
@@ -88,9 +93,12 @@ const ManageServicesPage = () => {
       description: service.description || '',
       image_url: service.image_url || '',
       original_price: service.original_price || '',
+      original_price_max: service.original_price_max || '',
       price: service.price || '',
+      price_min: service.price_min || '',
+      price_max: service.price_max || '',
       category: service.category || 'general',
-      branch: service.branch || '',
+      branch_id: service.branch_id || '',
       is_recommended: service.is_recommended || false,
       is_promotion: service.is_promotion || false,
       is_active: service.is_active !== false,
@@ -111,6 +119,10 @@ const ManageServicesPage = () => {
         ...form,
         price: parseFloat(form.price) || 0,
         original_price: parseFloat(form.original_price) || 0,
+        original_price_max: form.original_price_max ? parseFloat(form.original_price_max) : null,
+        price_min: form.price_min ? parseFloat(form.price_min) : null,
+        price_max: form.price_max ? parseFloat(form.price_max) : null,
+        branch_id: form.branch_id ? parseInt(form.branch_id) : null,
         sort_order: parseInt(form.sort_order) || 0,
       };
 
@@ -279,8 +291,17 @@ const ManageServicesPage = () => {
                           {CATEGORIES.find((c) => c.value === s.category)?.label || s.category}
                         </span>
                       </td>
+<<<<<<< HEAD
                       <td className="px-2 py-2.5 text-center hidden sm:table-cell">
                         <span className="text-xs text-grey dark:text-white/60 truncate block">{s.branch || '-'}</span>
+=======
+                      <td className="px-4 py-3 text-grey dark:text-white/60 hidden sm:table-cell">{s.branch_name || s.branch || '-'}</td>
+                      <td className="px-4 py-3 text-right">
+                        {s.original_price > 0 && s.original_price > s.price && (
+                          <span className="text-xs text-grey line-through mr-1">{formatPrice(s.original_price)}</span>
+                        )}
+                        <span className="font-bold text-primary">{formatPrice(s.price)} ฿</span>
+>>>>>>> 444b80e50e189da3c077e7156c4799163c530b01
                       </td>
                       <td className="px-2 py-2.5 text-right">
                         <div className="flex flex-col items-end gap-0.5">
@@ -459,13 +480,16 @@ const ManageServicesPage = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-midnight_text dark:text-white mb-1">สาขา</label>
-                    <input
-                      type="text"
-                      value={form.branch}
-                      onChange={(e) => setForm({ ...form, branch: e.target.value })}
-                      placeholder="เช่น พญาไท 1"
-                      className="w-full px-4 py-2.5 rounded-xl border border-border dark:border-dark_border bg-section dark:bg-darkmode text-midnight_text dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
+                    <select
+                      value={form.branch_id}
+                      onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border dark:border-dark_border bg-section dark:bg-darkmode text-midnight_text dark:text-white text-sm cursor-pointer"
+                    >
+                      <option value="">— ไม่ระบุสาขา —</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
