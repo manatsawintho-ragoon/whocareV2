@@ -30,11 +30,6 @@ const FinanceDashboardPage = lazy(() => import('./pages/FinanceDashboardPage'));
 const NewsManagePage = lazy(() => import('./pages/NewsManagePage'));
 const NewsListPage = lazy(() => import('./pages/NewsListPage'));
 const NewsDetailPage = lazy(() => import('./pages/NewsDetailPage'));
-const DoctorsPage = lazy(() => import('./pages/DoctorsPage'));
-const ServicesListPage = lazy(() => import('./pages/ServicesListPage'));
-const AppointmentPage = lazy(() => import('./pages/AppointmentPage'));
-const PackagesPage = lazy(() => import('./pages/PackagesPage'));
-const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-section dark:bg-darkmode">
@@ -152,11 +147,6 @@ function App() {
         <Route path="/news" element={<NewsListPage contentType="news" />} />
         <Route path="/news/:category" element={<NewsListPage contentType="news" />} />
         <Route path="/news/:category/:slug" element={<NewsDetailPage contentType="news" />} />
-        <Route path="/doctors" element={<DoctorsPage />} />
-        <Route path="/services" element={<ServicesListPage />} />
-        <Route path="/appointment" element={<AppointmentPage />} />
-        <Route path="/packages" element={<PackagesPage />} />
-        <Route path="/refund-policy" element={<RefundPolicyPage />} />
         </Routes>
       </Suspense>
       <ScrollToTop />

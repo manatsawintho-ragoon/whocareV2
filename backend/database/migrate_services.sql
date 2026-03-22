@@ -26,10 +26,6 @@ CREATE TABLE IF NOT EXISTS services (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Price range columns (added later)
-ALTER TABLE services ADD COLUMN IF NOT EXISTS price_max DECIMAL(10,2) DEFAULT NULL;
-ALTER TABLE services ADD COLUMN IF NOT EXISTS original_price_max DECIMAL(10,2) DEFAULT NULL;
-
 CREATE INDEX IF NOT EXISTS idx_services_category ON services (category);
 CREATE INDEX IF NOT EXISTS idx_services_is_recommended ON services (is_recommended);
 CREATE INDEX IF NOT EXISTS idx_services_is_promotion ON services (is_promotion);

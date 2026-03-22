@@ -21,9 +21,8 @@ const NewsDetailPage = ({ contentType = 'article' }) => {
     setLoading(true);
     try {
       const res = await apiGetNewsDetail(slug);
-      if (res.success && res.data) {
-        const { article: art, related } = res.data;
-        setArticle({ ...(art || {}), related_articles: related || [] });
+      if (res.success) {
+        setArticle(res.data);
       } else {
         setArticle(null);
       }

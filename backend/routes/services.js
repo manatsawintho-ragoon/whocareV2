@@ -38,36 +38,6 @@ router.get('/', async (req, res) => {
 });
 
 // ============================================================
-// GET /api/services/categories — Public: Distinct active categories
-// ============================================================
-router.get('/categories', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `SELECT DISTINCT category FROM services WHERE is_active = TRUE AND category IS NOT NULL AND category <> '' ORDER BY category ASC`
-    );
-    res.json({ success: true, data: rows.map((r) => r.category) });
-  } catch (error) {
-    console.error('Get categories error:', error);
-    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในระบบ' });
-  }
-});
-
-// ============================================================
-// GET /api/services/branches — Public: Distinct active branches
-// ============================================================
-router.get('/branches', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `SELECT DISTINCT branch FROM services WHERE is_active = TRUE AND branch IS NOT NULL AND branch <> '' ORDER BY branch ASC`
-    );
-    res.json({ success: true, data: rows.map((r) => r.branch) });
-  } catch (error) {
-    console.error('Get branches error:', error);
-    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในระบบ' });
-  }
-});
-
-// ============================================================
 // GET /api/services/admin — Admin: List all services (inc. inactive)
 // ============================================================
 router.get('/admin', requireRole('super_admin', 'manager'), async (req, res) => {
@@ -143,23 +113,21 @@ router.get('/:id', async (req, res) => {
 // ============================================================
 router.post('/', requireRole('super_admin', 'manager'), async (req, res) => {
   try {
-    const { name, description, image_url, original_price, original_price_max, price, price_max, category, branch, is_recommended, is_promotion, sort_order } = req.body;
+    const { name, description, image_url, original_price, price, category, branch, is_recommended, is_promotion, sort_order } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อบริการและราคา' });
     }
 
     const [result] = await pool.query(
-      `INSERT INTO services (name, description, image_url, original_price, original_price_max, price, price_max, category, branch, is_recommended, is_promotion, sort_order, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      `INSERT INTO services (name, description, image_url, original_price, price, category, branch, is_recommended, is_promotion, sort_order, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         name,
         description || '',
         image_url || '',
         original_price || 0,
-        original_price_max || null,
         price,
-        price_max || null,
         category || 'general',
         branch || '',
         is_recommended || false,
@@ -182,7 +150,7 @@ router.post('/', requireRole('super_admin', 'manager'), async (req, res) => {
 router.put('/:id', requireRole('super_admin', 'manager'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, image_url, original_price, original_price_max, price, price_max, category, branch, is_recommended, is_promotion, is_active, sort_order } = req.body;
+    const { name, description, image_url, original_price, price, category, branch, is_recommended, is_promotion, is_active, sort_order } = req.body;
 
     const [existing] = await pool.query('SELECT id FROM services WHERE id = $1', [id]);
     if (existing.length === 0) {
@@ -195,18 +163,16 @@ router.put('/:id', requireRole('super_admin', 'manager'), async (req, res) => {
         description = COALESCE($2, description),
         image_url = COALESCE($3, image_url),
         original_price = COALESCE($4, original_price),
-        original_price_max = $5,
-        price = COALESCE($6, price),
-        price_max = $7,
-        category = COALESCE($8, category),
-        branch = COALESCE($9, branch),
-        is_recommended = COALESCE($10, is_recommended),
-        is_promotion = COALESCE($11, is_promotion),
-        is_active = COALESCE($12, is_active),
-        sort_order = COALESCE($13, sort_order),
+        price = COALESCE($5, price),
+        category = COALESCE($6, category),
+        branch = COALESCE($7, branch),
+        is_recommended = COALESCE($8, is_recommended),
+        is_promotion = COALESCE($9, is_promotion),
+        is_active = COALESCE($10, is_active),
+        sort_order = COALESCE($11, sort_order),
         updated_at = NOW()
-       WHERE id = $14 RETURNING *`,
-      [name, description, image_url, original_price, original_price_max ?? null, price, price_max ?? null, category, branch, is_recommended, is_promotion, is_active, sort_order, id]
+       WHERE id = $12 RETURNING *`,
+      [name, description, image_url, original_price, price, category, branch, is_recommended, is_promotion, is_active, sort_order, id]
     );
 
     res.json({ success: true, data: result[0], message: 'อัปเดตบริการสำเร็จ' });
