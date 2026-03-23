@@ -1,0 +1,632 @@
+############################################################
+# WHOCARE API — Quick Reference
+# Base URL : http://localhost:5000
+# Auth     : Add header  →  Authorization: Bearer <token>
+# Token    : Login first, copy accessToken from response
+# Role     : patient(1) < reception/accountant(2) < nurse(3)
+#            < doctor(4) < manager(5) < super_admin(6)
+############################################################
+
+============================================================
+  PAGE → API MAP  (which page calls which endpoints)
+============================================================
+
+[AuthContext.jsx]  — runs on every page load & token refresh
+  GET  /api/auth/profile
+  POST /api/auth/logout
+
+------------------------------------------------------------
+[LoginPage.jsx]
+  POST /api/auth/login
+
+[RegisterPage.jsx]
+  POST /api/auth/register
+
+[ProfilePage.jsx]
+  GET  /api/auth/profile
+  PUT  /api/auth/profile
+
+------------------------------------------------------------
+[DashboardPage.jsx]
+  GET  /api/admin/dashboard
+
+[AdminUsersPage.jsx]
+  GET  /api/admin/users
+  GET  /api/admin/users/:id
+  PUT  /api/admin/users/:id
+  PUT  /api/admin/users/:id/role
+  PUT  /api/admin/users/:id/status
+
+[AuditLogsPage.jsx]
+  GET  /api/admin/audit-logs
+
+[PermissionsPage.jsx]
+  GET  /api/admin/permissions
+  PUT  /api/admin/permissions
+
+------------------------------------------------------------
+[ManageServicesPage.jsx]
+  GET    /api/services/admin
+  POST   /api/services
+  PUT    /api/services/:id        (edit + toggle active)
+  DELETE /api/services/:id
+
+[ServiceDetailPage.jsx]  (public)
+  GET  /api/services/:id
+
+------------------------------------------------------------
+[BookingPage.jsx]
+  GET  /api/services/:id          (load service info)
+  GET  /api/finance/doctors       (doctor dropdown)
+  GET  /api/finance/balance       (show wallet balance)
+  GET  /api/bookings/slots        (available time slots)
+  POST /api/bookings/lock         (lock slot, kept alive every 3 min)
+  POST /api/bookings/unlock       (release if user cancels)
+  POST /api/bookings              (create booking)
+
+[AppointmentManagementPage.jsx]
+  GET  /api/bookings/all          (list + filters)
+  GET  /api/bookings/stats        (summary counts)
+  GET  /api/bookings/slots        (reschedule calendar)
+  PUT  /api/bookings/:id/status
+  PUT  /api/bookings/:id/reschedule
+
+[MyBookingsPage.jsx]
+  GET  /api/bookings/my
+  GET  /api/bookings/slots        (reschedule modal)
+  PUT  /api/bookings/:id/user-reschedule
+  GET  /api/finance/balance
+  GET  /api/finance/transactions
+  POST /api/finance/deposit
+  POST /api/finance/refund-request
+
+------------------------------------------------------------
+[FinanceDashboardPage.jsx]
+  GET  /api/finance/dashboard
+  GET  /api/finance/refund-requests
+  PUT  /api/finance/refund-requests/:id/approve
+  PUT  /api/finance/refund-requests/:id/reject
+
+------------------------------------------------------------
+[NewsListPage.jsx]  (public)
+  GET  /api/news
+  GET  /api/news/categories
+  GET  /api/news/tags
+  GET  /api/news/featured
+
+[NewsDetailPage.jsx]  (public)
+  GET  /api/news/detail/:slug
+
+[NewsManagePage.jsx]
+  GET    /api/news/admin/list
+  GET    /api/news/admin/stats
+  GET    /api/news/admin/:id
+  POST   /api/news/admin
+  PUT    /api/news/admin/:id
+  PUT    /api/news/admin/:id/submit
+  PUT    /api/news/admin/:id/status
+  DELETE /api/news/admin/:id
+  GET    /api/news/admin/categories
+  POST   /api/news/admin/categories
+  DELETE /api/news/admin/categories/:id
+  DELETE /api/news/admin/tags/:id
+
+============================================================
+  FULL ENDPOINT REFERENCE (with request bodies)
+============================================================
+
+
+=== AUTH ===
+
+# Register a new Thai patient account
+POST   http://localhost:5000/api/auth/register   (Thai)
+Body:
+{
+  "userType": "thai",
+  "titleTh": "นาย",
+  "firstNameTh": "สมชาย",
+  "lastNameTh": "ใจดี",
+  "thaiId": "1234567890123",     # 13-digit Thai national ID
+  "titleEn": "Mr",
+  "firstNameEn": "Somchai",
+  "lastNameEn": "Jaidee",
+  "birthDate": "1990-01-15",
+  "gender": "male",              # male | female | other
+  "bloodType": "A",              # A | B | AB | O
+  "allergies": "penicillin",     # optional
+  "phone": "0812345678",
+  "email": "somchai@email.com",
+  "password": "Secret123!"
+}
+
+# Register a new foreign patient account
+POST   http://localhost:5000/api/auth/register   (Foreign)
+Body:
+{
+  "userType": "foreign",
+  "titleEn": "Mr",
+  "firstNameEn": "John",
+  "lastNameEn": "Doe",
+  "passport": "A12345678",       # passport number
+  "nationality": "American",
+  "birthDate": "1990-01-15",
+  "gender": "male",
+  "bloodType": "O",
+  "phone": "0812345678",
+  "email": "john@email.com",
+  "password": "Secret123!"
+}
+
+# Login — returns accessToken + refreshToken
+POST   http://localhost:5000/api/auth/login   (Thai)
+Body:
+{
+  "userType": "thai",
+  "thaiId": "1234567890123",
+  "password": "Secret123!"
+}
+
+# Login — foreign user uses passport instead
+POST   http://localhost:5000/api/auth/login   (Foreign)
+Body:
+{
+  "userType": "foreign",
+  "passport": "A12345678",
+  "password": "Secret123!"
+}
+
+# Get a new accessToken using refreshToken (no login needed)
+POST   http://localhost:5000/api/auth/refresh
+Body:
+{
+  "refreshToken": "<your_refresh_token>"
+}
+
+# Get the currently logged-in user's profile
+GET    http://localhost:5000/api/auth/profile
+Header: Authorization: Bearer <token>
+
+# Update the currently logged-in user's profile (partial update OK)
+PUT    http://localhost:5000/api/auth/profile
+Header: Authorization: Bearer <token>
+Body:
+{
+  "titleTh": "นาย",
+  "firstNameTh": "สมชาย",
+  "lastNameTh": "ใจดี",
+  "birthDate": "1990-01-15",
+  "bloodType": "A",
+  "allergies": "none",
+  "phone": "0812345678"
+}
+
+# Invalidate the refresh token (logout)
+POST   http://localhost:5000/api/auth/logout
+Body:
+{
+  "refreshToken": "<your_refresh_token>"
+}
+
+------------------------------------------------------------
+=== SERVICES ===
+
+# List all active services (public, no auth)
+GET    http://localhost:5000/api/services
+
+# Filter services by category (e.g. checkup, dental, etc.)
+GET    http://localhost:5000/api/services?category=checkup
+
+# Only recommended services
+GET    http://localhost:5000/api/services?recommended=true
+
+# Only promotional services
+GET    http://localhost:5000/api/services?promotion=true
+
+# Get detail of a single service by ID
+GET    http://localhost:5000/api/services/1
+
+# Admin: list ALL services including inactive (requires auth, role >= manager)
+GET    http://localhost:5000/api/services/admin
+Header: Authorization: Bearer <token>
+
+# Admin: search services by name
+GET    http://localhost:5000/api/services/admin?search=checkup
+Header: Authorization: Bearer <token>
+
+# Admin: create a new service (role >= manager)
+POST   http://localhost:5000/api/services
+Header: Authorization: Bearer <token>
+Body:
+{
+  "name": "Full Body Checkup",
+  "description": "Comprehensive health screening",
+  "image_url": "https://example.com/img.jpg",
+  "original_price": 3000,        # before discount
+  "price": 2500,                 # selling price
+  "category": "checkup",
+  "branch": "main",
+  "is_recommended": true,
+  "is_promotion": false,
+  "sort_order": 1                # display order (lower = first)
+}
+
+# Admin: update a service (partial update OK)
+PUT    http://localhost:5000/api/services/1
+Header: Authorization: Bearer <token>
+Body:
+{
+  "price": 2000,
+  "is_promotion": true,
+  "is_active": true,
+  "sort_order": 2
+}
+
+# Admin: delete a service permanently
+DELETE http://localhost:5000/api/services/1
+Header: Authorization: Bearer <token>
+
+------------------------------------------------------------
+=== BOOKINGS ===
+
+# Get available time slots for a service on a specific date
+GET    http://localhost:5000/api/bookings/slots?service_id=1&date=2026-03-25
+Header: Authorization: Bearer <token>
+
+# Lock a slot for 5 minutes while the user fills in booking details
+POST   http://localhost:5000/api/bookings/lock
+Header: Authorization: Bearer <token>
+Body:
+{
+  "service_id": 1,
+  "booking_date": "2026-03-25",
+  "booking_time": "10:00"
+}
+
+# Release a lock early (e.g. user cancelled before submitting)
+POST   http://localhost:5000/api/bookings/unlock
+Header: Authorization: Bearer <token>
+Body:
+{
+  "service_id": 1,
+  "booking_date": "2026-03-25",
+  "booking_time": "10:00"
+}
+
+# Create a new booking (slot must be locked first)
+POST   http://localhost:5000/api/bookings
+Header: Authorization: Bearer <token>
+Body:
+{
+  "service_id": 1,
+  "booking_date": "2026-03-25",
+  "booking_time": "10:00",
+  "branch": "main",
+  "contact_name": "Somchai Jaidee",
+  "contact_phone": "0812345678",
+  "contact_email": "somchai@email.com",
+  "note": "First visit, no allergies",   # optional
+  "price": 2500,
+  "doctor_id": 3                          # optional
+}
+
+# Get all bookings belonging to the logged-in patient
+GET    http://localhost:5000/api/bookings/my
+Header: Authorization: Bearer <token>
+
+# Staff: get all bookings in the system
+GET    http://localhost:5000/api/bookings/all
+Header: Authorization: Bearer <token>
+
+# Staff: filter bookings by status
+GET    http://localhost:5000/api/bookings/all?status=pending
+Header: Authorization: Bearer <token>
+# (values: pending | confirmed | completed | cancelled)
+
+# Staff: filter bookings by date range
+GET    http://localhost:5000/api/bookings/all?date_from=2026-03-01&date_to=2026-03-31
+Header: Authorization: Bearer <token>
+
+# Staff: search bookings by patient name / phone / email
+GET    http://localhost:5000/api/bookings/all?search=somchai
+Header: Authorization: Bearer <token>
+
+# Staff: booking summary stats (total, by status, today count)
+GET    http://localhost:5000/api/bookings/stats
+Header: Authorization: Bearer <token>
+
+# Staff: change booking status
+PUT    http://localhost:5000/api/bookings/1/status
+Header: Authorization: Bearer <token>
+Body:
+{
+  "status": "confirmed"
+}
+# (values: pending | confirmed | completed | cancelled)
+
+# Staff: reschedule a booking to a new date/time
+PUT    http://localhost:5000/api/bookings/1/reschedule   (staff)
+Header: Authorization: Bearer <token>
+Body:
+{
+  "booking_date": "2026-03-28",
+  "booking_time": "14:00"
+}
+
+# Patient: self-reschedule — allowed only ONCE per booking
+PUT    http://localhost:5000/api/bookings/1/user-reschedule   (patient, once only)
+Header: Authorization: Bearer <token>
+Body:
+{
+  "booking_date": "2026-03-26",
+  "booking_time": "11:00"
+}
+
+------------------------------------------------------------
+=== FINANCE ===
+
+# Get current wallet balance of the logged-in user
+GET    http://localhost:5000/api/finance/balance
+Header: Authorization: Bearer <token>
+
+# Top up wallet (simulate payment)
+POST   http://localhost:5000/api/finance/deposit
+Header: Authorization: Bearer <token>
+Body:
+{
+  "amount": 1000   # THB, min 1 — max 1,000,000
+}
+
+# Withdraw from wallet to a bank account
+POST   http://localhost:5000/api/finance/withdraw
+Header: Authorization: Bearer <token>
+Body:
+{
+  "amount": 500,
+  "bank_name": "Kasikorn Bank",
+  "account_name": "Somchai Jaidee",
+  "account_number": "100-2-34567-8"
+}
+
+# Get personal transaction history (deposits, withdrawals, payments)
+GET    http://localhost:5000/api/finance/transactions
+Header: Authorization: Bearer <token>
+
+# Patient: request a refund for a cancelled booking
+POST   http://localhost:5000/api/finance/refund-request
+Header: Authorization: Bearer <token>
+Body:
+{
+  "booking_id": 10,
+  "reason": "Cannot attend on that date due to emergency"
+}
+
+# Staff (accountant+): list all refund requests
+GET    http://localhost:5000/api/finance/refund-requests
+Header: Authorization: Bearer <token>
+
+# Staff: filter refund requests by status
+GET    http://localhost:5000/api/finance/refund-requests?status=pending
+Header: Authorization: Bearer <token>
+# (values: pending | approved | rejected)
+
+# Staff: approve a refund — money is returned to patient wallet
+PUT    http://localhost:5000/api/finance/refund-requests/1/approve
+Header: Authorization: Bearer <token>
+
+# Staff: reject a refund request
+PUT    http://localhost:5000/api/finance/refund-requests/1/reject
+Header: Authorization: Bearer <token>
+
+# Finance dashboard — revenue summary, totals, recent transactions
+GET    http://localhost:5000/api/finance/dashboard
+Header: Authorization: Bearer <token>
+
+# List all doctors (used in booking/finance reporting dropdowns)
+GET    http://localhost:5000/api/finance/doctors
+Header: Authorization: Bearer <token>
+
+------------------------------------------------------------
+=== NEWS (PUBLIC) ===
+# All endpoints below are public — no auth required
+
+# List all published articles (paginated)
+GET    http://localhost:5000/api/news
+
+# Filter articles by category slug
+GET    http://localhost:5000/api/news?category=health
+
+# Filter articles by tag name
+GET    http://localhost:5000/api/news?tag=diet
+
+# Full-text search across title and content
+GET    http://localhost:5000/api/news?search=checkup
+
+# Sort by most viewed instead of newest
+GET    http://localhost:5000/api/news?sort=popular
+
+# Filter by content type (article | video | infographic)
+GET    http://localhost:5000/api/news?content_type=article
+
+# List all article categories with article counts
+GET    http://localhost:5000/api/news/categories
+
+# List all tags with usage counts
+GET    http://localhost:5000/api/news/tags
+
+# Get featured + pinned articles for homepage banner
+GET    http://localhost:5000/api/news/featured
+
+# Get a single article by its URL slug (also increments view count)
+GET    http://localhost:5000/api/news/detail/my-article-slug
+
+------------------------------------------------------------
+=== NEWS (ADMIN) ===
+
+# Admin: paginated list of all articles (all statuses, role >= nurse)
+GET    http://localhost:5000/api/news/admin/list
+Header: Authorization: Bearer <token>
+
+# Admin: get a single article by ID (for edit form)
+GET    http://localhost:5000/api/news/admin/1
+Header: Authorization: Bearer <token>
+
+# Admin: article counts grouped by status
+GET    http://localhost:5000/api/news/admin/stats
+Header: Authorization: Bearer <token>
+
+# Admin: create a new article (saved as draft)
+POST   http://localhost:5000/api/news/admin
+Header: Authorization: Bearer <token>
+Body:
+{
+  "title": "Healthy Eating Tips",
+  "excerpt": "Short summary here",
+  "content": "<p>Full article HTML content here.</p>",
+  "cover_image": "https://example.com/img.jpg",
+  "category_id": 1,
+  "tags": ["health", "diet", "wellness"],   # tag names (created if not exist)
+  "is_featured": false,                      # show in homepage banner
+  "is_pinned": false,                        # pin to top of list
+  "seo_title": "Healthy Eating Tips | Whocare",
+  "seo_description": "Discover healthy eating tips",
+  "scheduled_at": null,                      # ISO datetime or null
+  "status": "draft",                         # draft | pending | published
+  "content_type": "article"                  # article | video | infographic
+}
+
+# Admin: update article fields (partial update OK)
+PUT    http://localhost:5000/api/news/admin/1
+Header: Authorization: Bearer <token>
+Body:
+{
+  "title": "Updated Title",
+  "excerpt": "Updated summary",
+  "is_featured": true
+}
+
+# Author: submit draft for editorial review (draft → pending)
+PUT    http://localhost:5000/api/news/admin/1/submit
+Header: Authorization: Bearer <token>
+
+# Editor/Manager: change article workflow status
+PUT    http://localhost:5000/api/news/admin/1/status
+Header: Authorization: Bearer <token>
+Body:
+{
+  "status": "published",
+  "note": "Approved and published"    # optional reason/note
+}
+# Status flow: draft → pending → approved → published → archived
+#              draft ← any state (revert to draft)
+
+# Admin: permanently delete an article
+DELETE http://localhost:5000/api/news/admin/1
+Header: Authorization: Bearer <token>
+
+# Admin: list all categories (includes article count per category)
+GET    http://localhost:5000/api/news/admin/categories
+Header: Authorization: Bearer <token>
+
+# Admin: create a new category
+POST   http://localhost:5000/api/news/admin/categories
+Header: Authorization: Bearer <token>
+Body:
+{
+  "name_th": "สุขภาพ",
+  "name_en": "Health",
+  "icon": "heart"     # icon name (optional)
+}
+
+# Admin: delete a category (only if no articles use it)
+DELETE http://localhost:5000/api/news/admin/categories/1
+Header: Authorization: Bearer <token>
+
+# Admin: list all tags
+GET    http://localhost:5000/api/news/admin/tags
+Header: Authorization: Bearer <token>
+
+# Admin: delete a tag by ID
+DELETE http://localhost:5000/api/news/admin/tags/1
+Header: Authorization: Bearer <token>
+
+------------------------------------------------------------
+=== ADMIN ===
+
+# List all users (paginated, role >= manager)
+GET    http://localhost:5000/api/admin/users
+Header: Authorization: Bearer <token>
+
+# Filter users by role
+GET    http://localhost:5000/api/admin/users?role=doctor
+Header: Authorization: Bearer <token>
+# (values: patient | reception | accountant | nurse | doctor | manager | super_admin)
+
+# Search users by name, email, phone, or ID number
+GET    http://localhost:5000/api/admin/users?search=somchai
+Header: Authorization: Bearer <token>
+
+# Get full profile of a single user
+GET    http://localhost:5000/api/admin/users/1
+Header: Authorization: Bearer <token>
+
+# Edit any user's profile (partial update OK)
+PUT    http://localhost:5000/api/admin/users/1
+Header: Authorization: Bearer <token>
+Body:
+{
+  "titleTh": "นาย",
+  "firstNameTh": "สมชาย",
+  "lastNameTh": "ใจดี",
+  "birthDate": "1990-01-15",
+  "bloodType": "A",
+  "allergies": "none",
+  "phone": "0812345678"
+}
+
+# Change a user's role (cannot assign role higher than your own)
+PUT    http://localhost:5000/api/admin/users/1/role
+Header: Authorization: Bearer <token>
+Body:
+{
+  "role": "doctor"
+}
+# (values: patient | reception | accountant | nurse | doctor | manager | super_admin)
+
+# Activate or deactivate a user account
+PUT    http://localhost:5000/api/admin/users/1/status
+Header: Authorization: Bearer <token>
+Body:
+{
+  "is_active": false    # true = active, false = suspended
+}
+
+# View audit log — who did what and when (role >= manager)
+GET    http://localhost:5000/api/admin/audit-logs
+Header: Authorization: Bearer <token>
+
+# Get the full role-permission matrix
+GET    http://localhost:5000/api/admin/permissions
+Header: Authorization: Bearer <token>
+
+# Update a specific role's permission for a module
+PUT    http://localhost:5000/api/admin/permissions
+Header: Authorization: Bearer <token>
+Body:
+{
+  "role": "doctor",
+  "module": "news",     # auth | services | bookings | finance | news | admin
+  "can_read": true,
+  "can_create": true,
+  "can_update": true,
+  "can_delete": false
+}
+
+# Admin dashboard — user counts, booking totals, revenue summary
+GET    http://localhost:5000/api/admin/dashboard
+Header: Authorization: Bearer <token>
+
+------------------------------------------------------------
+=== SYSTEM ===
+
+# Health check — returns server status and DB connection state
+GET    http://localhost:5000/api/health

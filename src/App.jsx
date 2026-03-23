@@ -30,6 +30,7 @@ const FinanceDashboardPage = lazy(() => import('./pages/FinanceDashboardPage'));
 const NewsManagePage = lazy(() => import('./pages/NewsManagePage'));
 const NewsListPage = lazy(() => import('./pages/NewsListPage'));
 const NewsDetailPage = lazy(() => import('./pages/NewsDetailPage'));
+const ApiDocPage = lazy(() => import('./pages/ApiDocPage'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-section dark:bg-darkmode">
@@ -147,6 +148,14 @@ function App() {
         <Route path="/news" element={<NewsListPage contentType="news" />} />
         <Route path="/news/:category" element={<NewsListPage contentType="news" />} />
         <Route path="/news/:category/:slug" element={<NewsDetailPage contentType="news" />} />
+        <Route
+          path="/admin/api-doc"
+          element={
+            <ProtectedRoute roles={['super_admin']}>
+              <ApiDocPage />
+            </ProtectedRoute>
+          }
+        />
         </Routes>
       </Suspense>
       <ScrollToTop />

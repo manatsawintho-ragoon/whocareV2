@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './swagger.js';
 import { testConnection } from './database/db.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
@@ -21,9 +23,25 @@ const PORT = process.env.PORT || 5000;
 // ============================================================
 // Security Middleware
 // ============================================================
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'unpkg.com', 'cdn.jsdelivr.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'unpkg.com', 'cdn.jsdelivr.net'],
+      imgSrc: ["'self'", 'data:', 'validator.swagger.io'],
+      workerSrc: ["'self'", 'blob:'],
+    },
+  },
+}));
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman, curl, mobile apps)
+    if (!origin) return callback(null, true);
+    const allowed = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim().replace(/\/$/, ''));
+    if (allowed.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10kb' }));
@@ -50,6 +68,18 @@ app.use(express.json({ limit: '10kb' }));
 
 // app.use('/api/', generalLimiter);
 // app.use('/api/auth/', authLimiter);
+
+// ============================================================
+// API Documentation — allow cross-origin iframe embedding
+// ============================================================
+app.use('/api-doc', (req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', "frame-ancestors *");
+  next();
+}, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'WhocarE Hospital API',
+  swaggerOptions: { persistAuthorization: true },
+}));
 
 // ============================================================
 // Routes
@@ -97,6 +127,7 @@ const start = async () => {
   app.listen(PORT, () => {
     console.log(`\n Whocare Backend API`);
     console.log(`   Server:  http://localhost:${PORT}`);
+    console.log(`   Docs:    http://localhost:${PORT}/api-doc`);
     console.log(`   Health:  http://localhost:${PORT}/api/health`);
     console.log(`   Mode:    ${process.env.NODE_ENV || 'development'}\n`);
   });

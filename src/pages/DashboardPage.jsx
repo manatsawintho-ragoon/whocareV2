@@ -73,6 +73,7 @@ const DashboardPage = () => {
         { icon: 'mdi:shield-check', label: 'จัดการสิทธิ์', desc: 'Permission Matrix', to: '/admin/permissions', color: 'amber' },
         { icon: 'mdi:file-document-outline', label: 'Audit Log', desc: 'ประวัติการใช้งานระบบ', to: '/admin/audit-logs', color: 'purple' },
         { icon: 'mdi:newspaper-variant-multiple', label: 'จัดการบทความ', desc: 'เขียน / แก้ไข / เผยแพร่บทความ', to: '/admin/news', color: 'pink' },
+        { icon: 'mdi:api', label: 'API Documentation', desc: 'Swagger UI — ทดสอบ API ทั้งหมด', to: '/admin/api-doc', color: 'cyan' },
       );
     }
 
@@ -136,6 +137,7 @@ const DashboardPage = () => {
     indigo: { bg: 'bg-indigo-500/10 dark:bg-indigo-500/20', text: 'text-indigo-500', hover: 'hover:border-indigo-500/40' },
     sky: { bg: 'bg-sky-500/10 dark:bg-sky-500/20', text: 'text-sky-500', hover: 'hover:border-sky-500/40' },
     pink: { bg: 'bg-pink-500/10 dark:bg-pink-500/20', text: 'text-pink-500', hover: 'hover:border-pink-500/40' },
+    cyan: { bg: 'bg-cyan-500/10 dark:bg-cyan-500/20', text: 'text-cyan-500', hover: 'hover:border-cyan-500/40' },
   };
 
   const menuItems = getMenuItems();
