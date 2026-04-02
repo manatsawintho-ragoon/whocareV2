@@ -39,8 +39,9 @@ app.use(cors({
     // Allow requests with no origin (Postman, curl, mobile apps)
     if (!origin) return callback(null, true);
     const allowed = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim().replace(/\/$/, ''));
+    allowed.push(`http://localhost:${process.env.PORT || 5000}`);
     if (allowed.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
+    return callback(null, false);
   },
   credentials: true,
 }));
@@ -77,8 +78,35 @@ app.use('/api-doc', (req, res, next) => {
   res.setHeader('Content-Security-Policy', "frame-ancestors *");
   next();
 }, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customSiteTitle: 'WhocarE Hospital API',
-  swaggerOptions: { persistAuthorization: true },
+  customSiteTitle: 'WhocarE Hospital API — Swagger',
+  customfavIcon: '',
+  customCss: `
+    .swagger-ui .topbar { background-color: #1a56db; padding: 8px 0; }
+    .swagger-ui .topbar .download-url-wrapper { display: none; }
+    .swagger-ui .info .title { font-size: 2rem; color: #1a56db; }
+    .swagger-ui .info .description h3 { color: #1a56db; margin-top: 1rem; }
+    .swagger-ui .info .description code { background: #f0f4ff; padding: 2px 6px; border-radius: 4px; color: #1a56db; }
+    .swagger-ui .info .description pre { background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    .swagger-ui .opblock-tag { font-size: 1.1rem; border-bottom: 2px solid #e2e8f0; }
+    .swagger-ui .opblock.opblock-get .opblock-summary-method { background: #059669; }
+    .swagger-ui .opblock.opblock-post .opblock-summary-method { background: #1a56db; }
+    .swagger-ui .opblock.opblock-put .opblock-summary-method { background: #d97706; }
+    .swagger-ui .opblock.opblock-delete .opblock-summary-method { background: #dc2626; }
+    .swagger-ui .btn.authorize { background-color: #059669; border-color: #059669; color: #fff; }
+    .swagger-ui .btn.authorize svg { fill: #fff; }
+    .swagger-ui .response-col_status { font-weight: 700; }
+  `,
+  swaggerOptions: {
+    persistAuthorization: true,
+    tryItOutEnabled: true,
+    filter: true,
+    displayRequestDuration: true,
+    docExpansion: 'list',
+    defaultModelsExpandDepth: 2,
+    defaultModelExpandDepth: 2,
+    tagsSorter: 'alpha',
+    operationsSorter: 'method',
+  },
 }));
 
 // ============================================================
@@ -114,9 +142,20 @@ app.get('/api/user/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check (with DB status)
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'disconnected';
+  try {
+    const [rows] = await pool.query('SELECT 1 AS ok');
+    if (rows.length > 0) dbStatus = 'connected';
+  } catch { dbStatus = 'error'; }
+  res.json({
+    status: 'ok',
+    database: dbStatus,
+    db_host: process.env.DB_HOST || 'localhost',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ============================================================

@@ -55,7 +55,6 @@ router.post('/deposit', authMiddleware, async (req, res) => {
     const { amount } = req.body;
     const depositAmount = parseFloat(amount);
     if (!depositAmount || depositAmount <= 0 || depositAmount > 1000000) {
-      client.release();
       return res.status(400).json({ success: false, message: 'จำนวนเงินไม่ถูกต้อง (1 - 1,000,000 บาท)' });
     }
 
@@ -98,11 +97,9 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
     const { amount, bank_name, account_name, account_number } = req.body;
     const withdrawAmount = parseFloat(amount);
     if (!withdrawAmount || withdrawAmount <= 0 || withdrawAmount > 1000000) {
-      client.release();
       return res.status(400).json({ success: false, message: 'จำนวนเงินไม่ถูกต้อง (1 - 1,000,000 บาท)' });
     }
     if (!bank_name || !account_name || !account_number) {
-      client.release();
       return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลธนาคารให้ครบถ้วน' });
     }
 
@@ -119,7 +116,6 @@ router.post('/withdraw', authMiddleware, async (req, res) => {
 
     if (currentBalance < withdrawAmount) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).json({ success: false, message: 'ยอดเงินไม่เพียงพอ' });
     }
 
