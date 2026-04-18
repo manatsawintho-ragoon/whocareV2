@@ -877,7 +877,7 @@ POST /api/auth/login  →  { accessToken, refreshToken }
       '/api/bookings/{id}/status': {
         put: {
           tags: ['Bookings'],
-          summary: 'อัปเดตสถานะการนัดหมาย (reception, nurse, manager, super_admin)',
+          summary: 'อัปเดตสถานะการนัดหมาย (reception, nurse, manager, doctor, super_admin)',
           security: [{ bearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           requestBody: {
@@ -889,6 +889,7 @@ POST /api/auth/login  →  { accessToken, refreshToken }
                   required: ['status'],
                   properties: {
                     status: { type: 'string', enum: ['pending', 'confirmed', 'completed', 'cancelled'] },
+                    doctor_id: { type: 'integer', nullable: true, description: 'ใช้ตอนเจ้าหน้าที่ยืนยันนัดเพื่อระบุแพทย์ผู้รับเคส' },
                   },
                 },
               },

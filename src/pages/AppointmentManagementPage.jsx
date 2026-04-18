@@ -5,7 +5,7 @@ import Swal from 'sweetalert2';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { useAuth } from '../context/AuthContext';
-import { apiGetAllBookings, apiGetBookingStats, apiUpdateBookingStatus, apiRescheduleBooking, apiGetBookingSlots } from '../services/api';
+import { apiGetAllBookings, apiGetBookingStats, apiUpdateBookingStatus, apiRescheduleBooking, apiGetBookingSlots, apiGetCalendarBookings, apiGetDoctors } from '../services/api';
 
 const STATUS_MAP = {
   pending: { label: 'รอยืนยัน', color: 'yellow', icon: 'mdi:clock' },
@@ -34,6 +34,13 @@ const AppointmentManagementPage = () => {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [activeView, setActiveView] = useState('list'); // list | calendar
+
+  // Calendar view state
+  const [calViewMonth, setCalViewMonth] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() + 1 }; });
+  const [calBookings, setCalBookings] = useState([]);
+  const [calLoading, setCalLoading] = useState(false);
+  const [calSelectedDate, setCalSelectedDate] = useState(null);
 
   // Reschedule calendar modal state
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
@@ -47,7 +54,7 @@ const AppointmentManagementPage = () => {
   // Allowed roles
   const canManage = hasRole('reception', 'manager', 'super_admin');
   const canLimitedManage = hasRole('nurse');
-  const isReadOnly = role === 'doctor';
+  const isDoctor = role === 'doctor';
 
   useEffect(() => {
     if (authLoading) return;
@@ -58,6 +65,10 @@ const AppointmentManagementPage = () => {
     }
     loadData();
   }, [user, authLoading]);
+
+  useEffect(() => {
+    if (activeView === 'calendar' && user) loadCalendar();
+  }, [activeView, calViewMonth]);
 
   const loadData = async (page = 1) => {
     setLoading(true);
@@ -85,6 +96,27 @@ const AppointmentManagementPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadCalendar = async () => {
+    setCalLoading(true);
+    try {
+      const r = await apiGetCalendarBookings(calViewMonth.y, calViewMonth.m);
+      if (r.success) setCalBookings(r.data);
+    } catch { setCalBookings([]); }
+    finally { setCalLoading(false); }
+  };
+
+  const loadDoctors = async (params = {}) => {
+    try {
+      const result = await apiGetDoctors(params);
+      if (result.success) {
+        return result.data || [];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
   };
 
   const handleSearch = (e) => {
@@ -117,10 +149,44 @@ const AppointmentManagementPage = () => {
   // Status change
   const handleStatusChange = async (booking, newStatus) => {
     const statusInfo = STATUS_MAP[newStatus];
+    const requiresDoctorSelection = newStatus === 'confirmed' && !isDoctor && (canManage || canLimitedManage);
+    const availableDoctors = requiresDoctorSelection
+      ? await loadDoctors({
+          service_id: booking.service_id,
+          branch: booking.branch || '',
+          date: booking.booking_date,
+          time: booking.booking_time,
+          exclude_booking_id: booking.id,
+        })
+      : [];
+
+    if (requiresDoctorSelection && availableDoctors.length === 0) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'ไม่มีแพทย์ว่าง',
+        text: 'ไม่พบแพทย์ที่รับบริการนี้และว่างในวันเวลาที่เลือก',
+        confirmButtonColor: '#3b82f6',
+      });
+      return;
+    }
+
+    const doctorOptions = availableDoctors.reduce((acc, doctor) => {
+      acc[String(doctor.id)] = doctor.name;
+      return acc;
+    }, {});
     const confirm = await Swal.fire({
       title: `เปลี่ยนสถานะเป็น "${statusInfo.label}"`,
       html: `การจอง #${booking.id} — ${booking.contact_name}`,
       icon: 'question',
+      input: requiresDoctorSelection ? 'select' : undefined,
+      inputOptions: requiresDoctorSelection ? doctorOptions : undefined,
+      inputPlaceholder: requiresDoctorSelection ? 'เลือกแพทย์ผู้รับเคส' : undefined,
+      inputValue: requiresDoctorSelection && booking.doctor_id ? String(booking.doctor_id) : undefined,
+      inputLabel: requiresDoctorSelection ? 'เลือกแพทย์ที่สามารถรับนัดนี้' : undefined,
+      inputValidator: requiresDoctorSelection ? (value) => {
+        if (!value) return 'กรุณาเลือกแพทย์';
+        return undefined;
+      } : undefined,
       showCancelButton: true,
       confirmButtonColor: '#3b82f6',
       cancelButtonColor: '#6b7280',
@@ -129,7 +195,8 @@ const AppointmentManagementPage = () => {
     });
 
     if (confirm.isConfirmed) {
-      const result = await apiUpdateBookingStatus(booking.id, newStatus);
+      const doctorId = requiresDoctorSelection ? parseInt(confirm.value, 10) : null;
+      const result = await apiUpdateBookingStatus(booking.id, newStatus, doctorId);
       if (result.success) {
         Swal.fire({ icon: 'success', title: 'สำเร็จ', timer: 1500, showConfirmButton: false });
         loadData(pagination.page);
@@ -215,12 +282,20 @@ const AppointmentManagementPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-midnight_text dark:text-white flex items-center gap-2">
               <Icon icon="mdi:calendar-clock" width="28" className="text-primary" />
-              จัดการนัดหมาย
+              {isDoctor ? 'นัดหมายของฉัน' : 'จัดการนัดหมาย'}
             </h1>
             <p className="text-sm text-grey dark:text-white/50 mt-1">
-              {isReadOnly ? 'ดูตารางนัดหมาย (อ่านอย่างเดียว)' : 'จัดการนัดหมาย สร้าง แก้ไข เลื่อน ยกเลิก'}
+              {isDoctor ? 'รับนัด (pending ทั้งหมด) + จัดการนัดที่คุณรับไว้แล้ว' : 'จัดการนัดหมาย สร้าง แก้ไข เลื่อน ยกเลิก'}
               {' '}({pagination.total} รายการ)
             </p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setActiveView('list')} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition cursor-pointer ${activeView === 'list' ? 'bg-primary text-white shadow' : 'bg-white dark:bg-darklight border border-border dark:border-dark_border text-grey dark:text-white/60 hover:border-primary'}`}>
+              <Icon icon="mdi:format-list-bulleted" width="16" />รายการ
+            </button>
+            <button onClick={() => setActiveView('calendar')} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition cursor-pointer ${activeView === 'calendar' ? 'bg-primary text-white shadow' : 'bg-white dark:bg-darklight border border-border dark:border-dark_border text-grey dark:text-white/60 hover:border-primary'}`}>
+              <Icon icon="mdi:calendar-month" width="16" />ปฏิทิน
+            </button>
           </div>
         </div>
 
@@ -372,7 +447,7 @@ const AppointmentManagementPage = () => {
                   <th className="text-center px-2 py-3 font-semibold text-midnight_text dark:text-white">เวลา</th>
                   <th className="text-right px-2 py-3 font-semibold text-midnight_text dark:text-white hidden sm:table-cell">มัดจำ</th>
                   <th className="text-center px-2 py-3 font-semibold text-midnight_text dark:text-white">สถานะ</th>
-                  {(canManage || canLimitedManage) && (
+                  {(canManage || canLimitedManage || isDoctor) && (
                     <th className="text-center pr-4 pl-2 py-3 font-semibold text-midnight_text dark:text-white">จัดการ</th>
                   )}
                 </tr>
@@ -380,7 +455,7 @@ const AppointmentManagementPage = () => {
               <tbody>
                 {bookings.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage || canLimitedManage ? 8 : 7} className="text-center py-12 text-grey dark:text-white/40">
+                    <td colSpan={canManage || canLimitedManage || isDoctor ? 8 : 7} className="text-center py-12 text-grey dark:text-white/40">
                       <Icon icon="mdi:calendar-blank" width="48" className="mx-auto mb-2 opacity-30" />
                       <p>ไม่พบนัดหมาย</p>
                     </td>
@@ -414,10 +489,30 @@ const AppointmentManagementPage = () => {
                             {st.label}
                           </span>
                         </td>
-                        {(canManage || canLimitedManage) && (
+                        {(canManage || canLimitedManage || isDoctor) && (
                           <td className="pr-4 pl-2 py-3">
                             <div className="flex items-center justify-center gap-1">
-                              {/* Confirm */}
+                              {/* Doctor: รับนัด (accept unassigned pending) */}
+                              {isDoctor && b.status === 'pending' && !b.doctor_id && (
+                                <button
+                                  onClick={() => handleStatusChange(b, 'confirmed')}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 text-[11px] font-semibold transition cursor-pointer"
+                                  title="รับนัด"
+                                >
+                                  <Icon icon="mdi:hand-back-right" width="14" />รับนัด
+                                </button>
+                              )}
+                              {/* Doctor: complete their own confirmed booking */}
+                              {isDoctor && b.status === 'confirmed' && b.doctor_id && (
+                                <button
+                                  onClick={() => handleStatusChange(b, 'completed')}
+                                  className="p-1.5 rounded-lg hover:bg-green-500/10 text-green-500 transition-colors cursor-pointer"
+                                  title="เสร็จสิ้น"
+                                >
+                                  <Icon icon="mdi:check-all" width="16" />
+                                </button>
+                              )}
+                              {/* Staff: Confirm */}
                               {b.status === 'pending' && (canManage || canLimitedManage) && (
                                 <button
                                   onClick={() => handleStatusChange(b, 'confirmed')}
@@ -427,7 +522,7 @@ const AppointmentManagementPage = () => {
                                   <Icon icon="mdi:check" width="16" />
                                 </button>
                               )}
-                              {/* Complete */}
+                              {/* Staff: Complete */}
                               {b.status === 'confirmed' && canManage && (
                                 <button
                                   onClick={() => handleStatusChange(b, 'completed')}
@@ -520,6 +615,114 @@ const AppointmentManagementPage = () => {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Calendar View */}
+        {activeView === 'calendar' && (
+          <div className="bg-white dark:bg-darklight rounded-2xl shadow-sm border border-border dark:border-dark_border p-5">
+            <div className="flex items-center justify-between mb-5">
+              <button onClick={() => setCalViewMonth(p => p.m === 1 ? { y: p.y - 1, m: 12 } : { y: p.y, m: p.m - 1 })} className="p-2 rounded-lg hover:bg-section dark:hover:bg-darkmode cursor-pointer">
+                <Icon icon="mdi:chevron-left" width="20" className="text-grey" />
+              </button>
+              <h3 className="text-base font-bold text-midnight_text dark:text-white">
+                {new Date(calViewMonth.y, calViewMonth.m - 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+              </h3>
+              <button onClick={() => setCalViewMonth(p => p.m === 12 ? { y: p.y + 1, m: 1 } : { y: p.y, m: p.m + 1 })} className="p-2 rounded-lg hover:bg-section dark:hover:bg-darkmode cursor-pointer">
+                <Icon icon="mdi:chevron-right" width="20" className="text-grey" />
+              </button>
+            </div>
+            {calLoading ? (
+              <div className="flex justify-center py-12"><Icon icon="mdi:loading" width="32" className="text-primary animate-spin" /></div>
+            ) : (
+              <>
+                <div className="grid grid-cols-7 gap-1 mb-1">
+                  {['อา','จ','อ','พ','พฤ','ศ','ส'].map(d => (
+                    <div key={d} className="text-center text-[11px] font-semibold text-grey py-1">{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {(() => {
+                    const { y, m } = calViewMonth;
+                    const firstDay = new Date(y, m - 1, 1).getDay();
+                    const daysInMonth = new Date(y, m, 0).getDate();
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const bookingsByDate = {};
+                    calBookings.forEach(b => {
+                      if (!bookingsByDate[b.booking_date]) bookingsByDate[b.booking_date] = [];
+                      bookingsByDate[b.booking_date].push(b);
+                    });
+                    const cells = [];
+                    for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                      const db = bookingsByDate[ds] || [];
+                      const isToday = ds === todayStr;
+                      const isSel = calSelectedDate === ds;
+                      cells.push(
+                        <button key={ds} onClick={() => setCalSelectedDate(isSel ? null : ds)}
+                          className={`relative p-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-h-[56px] flex flex-col items-center gap-0.5
+                            ${isSel ? 'bg-primary text-white shadow-lg ring-2 ring-primary/30' : isToday ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : 'hover:bg-section dark:hover:bg-darkmode text-midnight_text dark:text-white'}`}>
+                          <span>{d}</span>
+                          <div className="flex flex-wrap justify-center gap-0.5">
+                            {db.slice(0, 4).map((bk, i) => (
+                              <div key={i} className={`w-1.5 h-1.5 rounded-full ${bk.status === 'pending' ? (isSel ? 'bg-yellow-200' : 'bg-yellow-400') : bk.status === 'confirmed' ? (isSel ? 'bg-blue-200' : 'bg-blue-500') : (isSel ? 'bg-green-200' : 'bg-green-500')}`} />
+                            ))}
+                            {db.length > 4 && <span className={`text-[8px] leading-none ${isSel ? 'text-white/80' : 'text-grey'}`}>+{db.length - 4}</span>}
+                          </div>
+                        </button>
+                      );
+                    }
+                    return cells;
+                  })()}
+                </div>
+                <div className="flex flex-wrap items-center gap-4 mt-4 pt-3 border-t border-border dark:border-dark_border">
+                  <span className="flex items-center gap-1.5 text-xs text-grey"><div className="w-2 h-2 rounded-full bg-yellow-400" />รอยืนยัน</span>
+                  <span className="flex items-center gap-1.5 text-xs text-grey"><div className="w-2 h-2 rounded-full bg-blue-500" />ยืนยันแล้ว</span>
+                  <span className="flex items-center gap-1.5 text-xs text-grey"><div className="w-2 h-2 rounded-full bg-green-500" />เสร็จสิ้น</span>
+                  {isDoctor && <span className="text-xs text-grey ml-auto"><Icon icon="mdi:information" width="12" className="inline mr-1" />ผู้ที่ต้องรับ = การจองใหม่(ยังไม่มีแพทย์) + นัดของคุณ</span>}
+                </div>
+                {calSelectedDate && (() => {
+                  const db = calBookings.filter(b => b.booking_date === calSelectedDate);
+                  return (
+                    <div className="mt-4 pt-4 border-t border-border dark:border-dark_border">
+                      <h4 className="text-sm font-bold text-midnight_text dark:text-white mb-3 flex items-center gap-2">
+                        <Icon icon="mdi:calendar-check" width="16" className="text-primary" />
+                        {new Date(calSelectedDate + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                        <span className="text-xs text-grey font-normal">({db.length} นัด)</span>
+                      </h4>
+                      {db.length === 0 ? (
+                        <p className="text-center text-grey text-sm py-4">ไม่มีนัดหมาย</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {db.map(b => {
+                            const st = STATUS_MAP[b.status] || STATUS_MAP.pending;
+                            return (
+                              <div key={b.id} className="flex items-center gap-3 p-3 bg-section dark:bg-darkmode rounded-xl">
+                                <span className="text-sm font-bold text-primary w-12 shrink-0">{b.booking_time}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-midnight_text dark:text-white truncate">{b.contact_name}</p>
+                                  <p className="text-xs text-grey truncate">{b.service_name}</p>
+                                </div>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${STATUS_COLORS[st.color]}`}>
+                                  <Icon icon={st.icon} width="10" />{st.label}
+                                </span>
+                                {isDoctor && b.status === 'pending' && !b.doctor_id && (
+                                  <button onClick={() => { handleStatusChange(b, 'confirmed'); loadCalendar(); }}
+                                    className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-600 text-[11px] font-semibold hover:bg-teal-500/20 cursor-pointer shrink-0">
+                                    รับนัด
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
         )}
       </div>

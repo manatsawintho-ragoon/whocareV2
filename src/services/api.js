@@ -267,8 +267,10 @@ export const apiDeleteService = async (id) => {
 // ============================================================
 // Bookings API
 // ============================================================
-export const apiGetBookingSlots = async (serviceId, date) => {
-  const response = await apiFetch(`/bookings/slots?service_id=${serviceId}&date=${date}`);
+export const apiGetBookingSlots = async (serviceId, date, doctorId = null) => {
+  const query = new URLSearchParams({ service_id: serviceId, date });
+  if (doctorId !== null && doctorId !== undefined) query.set('doctor_id', doctorId);
+  const response = await apiFetch(`/bookings/slots?${query.toString()}`);
   return response.json();
 };
 
@@ -312,10 +314,12 @@ export const apiGetBookingStats = async () => {
   return response.json();
 };
 
-export const apiUpdateBookingStatus = async (id, status) => {
+export const apiUpdateBookingStatus = async (id, status, doctorId = null) => {
+  const payload = { status };
+  if (doctorId !== null && doctorId !== undefined) payload.doctor_id = doctorId;
   const response = await apiFetch(`/bookings/${id}/status`, {
     method: 'PUT',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(payload),
   });
   return response.json();
 };
@@ -336,11 +340,28 @@ export const apiUserRescheduleBooking = async (id, data) => {
   return response.json();
 };
 
+export const apiGetCalendarBookings = async (year, month) => {
+  const response = await apiFetch(`/bookings/calendar?year=${year}&month=${month}`);
+  return response.json();
+};
+
+export const apiGetMyCalendarBookings = async (year, month) => {
+  const response = await apiFetch(`/bookings/my-calendar?year=${year}&month=${month}`);
+  return response.json();
+};
+
 // ============================================================
 // Finance API
 // ============================================================
-export const apiGetDoctors = async () => {
-  const response = await apiFetch('/finance/doctors');
+export const apiGetDoctors = async (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, value);
+    }
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await apiFetch(`/finance/doctors${suffix}`);
   return response.json();
 };
 

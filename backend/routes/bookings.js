@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../database/db.js';
 import authMiddleware from '../middleware/auth.js';
 import { requireRole } from '../middleware/roleAuth.js';
+import { getDoctorAvailabilitySnapshot, isTimeWithinRanges, listAvailableDoctors, normalizeTime } from '../utils/doctorAvailability.js';
 
 const router = Router();
 
@@ -34,9 +35,15 @@ const generateTimeSlots = (date) => {
 // ============================================================
 router.get('/slots', authMiddleware, async (req, res) => {
   try {
-    const { service_id, date } = req.query;
+    const { service_id, date, doctor_id } = req.query;
     if (!service_id || !date) {
       return res.status(400).json({ success: false, message: 'กรุณาระบุ service_id และ date' });
+    }
+
+    const parsedServiceId = parseInt(service_id, 10);
+    const parsedDoctorId = doctor_id ? parseInt(doctor_id, 10) : null;
+    if (!Number.isInteger(parsedServiceId)) {
+      return res.status(400).json({ success: false, message: 'service_id ไม่ถูกต้อง' });
     }
 
     await cleanExpiredLocks();
@@ -63,6 +70,17 @@ router.get('/slots', authMiddleware, async (req, res) => {
     const currentMinutes = bangkokNow.getHours() * 60 + bangkokNow.getMinutes();
 
     const userId = req.user.id;
+    const availabilitySnapshot = await getDoctorAvailabilitySnapshot({ serviceId: parsedServiceId, date });
+    const candidateDoctors = availabilitySnapshot.doctors.filter((doctor) => {
+      if (!doctor.hasServiceAccess) return false;
+      if (Number.isInteger(parsedDoctorId) && doctor.id !== parsedDoctorId) return false;
+      return doctor.availabilityRanges.length > 0;
+    });
+
+    const hasDoctorForSlot = (time) => candidateDoctors.some((doctor) => (
+      isTimeWithinRanges(time, doctor.availabilityRanges)
+      && !doctor.busyTimes.has(normalizeTime(time))
+    ));
 
     const slots = allSlots.map((time) => {
       const [hh, mm] = time.split(':').map(Number);
@@ -73,6 +91,8 @@ router.get('/slots', authMiddleware, async (req, res) => {
         status = 'past';
       } else if (bookedTimes.has(time)) {
         status = 'booked';
+      } else if (!hasDoctorForSlot(time)) {
+        status = 'unavailable_doctor';
       } else if (lockMap[time]) {
         status = (lockMap[time].user_id === userId) ? 'my_lock' : 'locking';
       }
@@ -181,6 +201,13 @@ router.post('/', authMiddleware, async (req, res) => {
     }
     const svc = svcResult.rows[0];
 
+    const selectedDoctorId = doctor_id ? parseInt(doctor_id, 10) : null;
+    if (doctor_id && !Number.isInteger(selectedDoctorId)) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ success: false, message: 'รหัสแพทย์ไม่ถูกต้อง' });
+    }
+
     await cleanExpiredLocks();
 
     // Check for duplicate booking
@@ -192,6 +219,23 @@ router.post('/', authMiddleware, async (req, res) => {
       await client.query('ROLLBACK');
       client.release();
       return res.status(409).json({ success: false, message: 'เวลานี้ถูกจองแล้ว กรุณาเลือกเวลาอื่น' });
+    }
+
+    const { doctors: availableDoctors } = await listAvailableDoctors({
+      serviceId: parseInt(service_id, 10),
+      branch: branch || svc.branch || '',
+      date: booking_date,
+      time: booking_time,
+    });
+    if (availableDoctors.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ success: false, message: 'ไม่มีแพทย์ว่างสำหรับวันและเวลานี้ กรุณาเลือกช่วงเวลาอื่น' });
+    }
+    if (selectedDoctorId && !availableDoctors.some((doctor) => doctor.id === selectedDoctorId)) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ success: false, message: 'แพทย์ที่เลือกไม่ว่างในวันและเวลานี้' });
     }
 
     const userId = req.user.id;
@@ -220,7 +264,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const bookResult = await client.query(
       `INSERT INTO bookings (user_id, service_id, booking_date, booking_time, branch, contact_name, contact_phone, contact_email, note, price, deposit_amount, doctor_id, payment_method)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'balance') RETURNING *`,
-      [userId, service_id, booking_date, booking_time, branch || svc.branch || '', contact_name, contact_phone, contact_email || '', note || '', servicePrice, depositAmount, doctor_id || null]
+      [userId, service_id, booking_date, booking_time, branch || svc.branch || '', contact_name, contact_phone, contact_email || '', note || '', servicePrice, depositAmount, selectedDoctorId || null]
     );
     const booking = bookResult.rows[0];
 
@@ -295,6 +339,12 @@ router.get('/all', requireRole('reception', 'nurse', 'manager', 'doctor', 'super
       paramIdx++;
     }
 
+    // Doctor: see pending unassigned bookings + their own accepted bookings
+    if (req.user.role === 'doctor') {
+      where += ` AND ((b.doctor_id IS NULL AND b.status = 'pending') OR b.doctor_id = $${paramIdx++})`;
+      params.push(req.user.id);
+    }
+
     const [countResult] = await pool.query(
       `SELECT COUNT(*) as total FROM bookings b LEFT JOIN services s ON s.id = b.service_id ${where}`, params
     );
@@ -324,15 +374,41 @@ router.get('/all', requireRole('reception', 'nurse', 'manager', 'doctor', 'super
 // ============================================================
 // GET /api/bookings/stats — Dashboard stats
 // ============================================================
-router.get('/stats', requireRole('reception', 'nurse', 'manager', 'super_admin'), async (req, res) => {
+router.get('/stats', requireRole('reception', 'nurse', 'manager', 'doctor', 'super_admin'), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const [todayCount] = await pool.query(`SELECT COUNT(*) as total FROM bookings WHERE booking_date = $1 AND status NOT IN ('cancelled')`, [today]);
-    const [pendingCount] = await pool.query(`SELECT COUNT(*) as total FROM bookings WHERE status = 'pending'`);
-    const [confirmedCount] = await pool.query(`SELECT COUNT(*) as total FROM bookings WHERE status = 'confirmed'`);
-    const [totalCount] = await pool.query(`SELECT COUNT(*) as total FROM bookings WHERE status NOT IN ('cancelled')`);
+    const isDoctor = req.user.role === 'doctor';
+    const doctorId = req.user.id;
+
+    const [todayCount] = await pool.query(
+      isDoctor
+        ? `SELECT COUNT(*) as total FROM bookings WHERE booking_date = $1 AND status NOT IN ('cancelled') AND doctor_id = $2`
+        : `SELECT COUNT(*) as total FROM bookings WHERE booking_date = $1 AND status NOT IN ('cancelled')`,
+      isDoctor ? [today, doctorId] : [today]
+    );
+    const [pendingCount] = await pool.query(
+      isDoctor
+        ? `SELECT COUNT(*) as total FROM bookings WHERE status = 'pending' AND (doctor_id IS NULL OR doctor_id = $1)`
+        : `SELECT COUNT(*) as total FROM bookings WHERE status = 'pending'`,
+      isDoctor ? [doctorId] : []
+    );
+    const [confirmedCount] = await pool.query(
+      isDoctor
+        ? `SELECT COUNT(*) as total FROM bookings WHERE status = 'confirmed' AND doctor_id = $1`
+        : `SELECT COUNT(*) as total FROM bookings WHERE status = 'confirmed'`,
+      isDoctor ? [doctorId] : []
+    );
+    const [totalCount] = await pool.query(
+      isDoctor
+        ? `SELECT COUNT(*) as total FROM bookings WHERE status NOT IN ('cancelled') AND doctor_id = $1`
+        : `SELECT COUNT(*) as total FROM bookings WHERE status NOT IN ('cancelled')`,
+      isDoctor ? [doctorId] : []
+    );
     const [recentBookings] = await pool.query(
-      `SELECT b.*, s.name as service_name FROM bookings b LEFT JOIN services s ON s.id = b.service_id ORDER BY b.created_at DESC LIMIT 5`
+      isDoctor
+        ? `SELECT b.*, s.name as service_name FROM bookings b LEFT JOIN services s ON s.id = b.service_id WHERE b.doctor_id = $1 ORDER BY b.created_at DESC LIMIT 5`
+        : `SELECT b.*, s.name as service_name FROM bookings b LEFT JOIN services s ON s.id = b.service_id ORDER BY b.created_at DESC LIMIT 5`,
+      isDoctor ? [doctorId] : []
     );
 
     res.json({
@@ -354,10 +430,10 @@ router.get('/stats', requireRole('reception', 'nurse', 'manager', 'super_admin')
 // ============================================================
 // PUT /api/bookings/:id/status — Update booking status
 // ============================================================
-router.put('/:id/status', requireRole('reception', 'nurse', 'manager', 'super_admin'), async (req, res) => {
+router.put('/:id/status', requireRole('reception', 'nurse', 'manager', 'doctor', 'super_admin'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, doctor_id } = req.body;
     const validStatuses = ['pending', 'confirmed', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'สถานะไม่ถูกต้อง' });
@@ -365,8 +441,62 @@ router.put('/:id/status', requireRole('reception', 'nurse', 'manager', 'super_ad
     if (req.user.role === 'nurse' && !['confirmed'].includes(status)) {
       return res.status(403).json({ success: false, message: 'พยาบาลสามารถเปลี่ยนสถานะเป็น "ยืนยัน" เท่านั้น' });
     }
+    if (req.user.role === 'doctor' && !['confirmed', 'completed'].includes(status)) {
+      return res.status(403).json({ success: false, message: 'แพทย์สามารถเปลี่ยนสถานะเป็น "ยืนยัน" หรือ "เสร็จสิ้น" เท่านั้น' });
+    }
 
-    const [result] = await pool.query(`UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
+    const [bookings] = await pool.query('SELECT id, doctor_id, service_id, branch, booking_date, booking_time FROM bookings WHERE id = $1', [id]);
+    if (bookings.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบการจอง' });
+
+    const booking = bookings[0];
+    let assignedDoctorId = booking.doctor_id;
+
+    if (status === 'confirmed') {
+      if (req.user.role === 'doctor') {
+        assignedDoctorId = req.user.id;
+      } else if (doctor_id !== undefined && doctor_id !== null && doctor_id !== '') {
+        const parsedDoctorId = parseInt(doctor_id, 10);
+        if (!Number.isInteger(parsedDoctorId) || parsedDoctorId <= 0) {
+          return res.status(400).json({ success: false, message: 'รหัสแพทย์ไม่ถูกต้อง' });
+        }
+
+        const [doctorRows] = await pool.query(
+          `SELECT id FROM users WHERE id = $1 AND role = 'doctor' AND is_active = TRUE`,
+          [parsedDoctorId]
+        );
+        if (doctorRows.length === 0) {
+          return res.status(400).json({ success: false, message: 'ไม่พบแพทย์ที่เลือก' });
+        }
+        assignedDoctorId = parsedDoctorId;
+      }
+
+      if (!assignedDoctorId) {
+        return res.status(400).json({ success: false, message: 'กรุณาเลือกแพทย์ก่อนยืนยันนัด' });
+      }
+
+      const { doctors: availableDoctors } = await listAvailableDoctors({
+        serviceId: booking.service_id,
+        branch: booking.branch || '',
+        date: booking.booking_date,
+        time: booking.booking_time,
+        excludeBookingId: parseInt(id, 10),
+      });
+      if (!availableDoctors.some((doctor) => doctor.id === assignedDoctorId)) {
+        return res.status(400).json({ success: false, message: 'แพทย์ที่เลือกไม่ว่างสำหรับวันและเวลานี้' });
+      }
+    }
+
+    // When a booking is confirmed, ensure the assigned doctor is stored.
+    let updateQuery, updateParams;
+    if (status === 'confirmed') {
+      updateQuery = `UPDATE bookings SET status = $1, doctor_id = $2, updated_at = NOW() WHERE id = $3 RETURNING *`;
+      updateParams = [status, assignedDoctorId, id];
+    } else {
+      updateQuery = `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`;
+      updateParams = [status, id];
+    }
+
+    const [result] = await pool.query(updateQuery, updateParams);
     if (result.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบการจอง' });
 
     res.json({ success: true, data: result[0], message: 'อัปเดตสถานะสำเร็จ' });
@@ -467,6 +597,68 @@ router.put('/:id/user-reschedule', authMiddleware, async (req, res) => {
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ success: false, message: 'เวลานี้ถูกจองแล้ว' });
     console.error('User reschedule error:', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// ============================================================
+// GET /api/bookings/calendar — Monthly calendar view (staff/doctor)
+// ============================================================
+router.get('/calendar', requireRole('reception', 'nurse', 'manager', 'doctor', 'super_admin'), async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const y = parseInt(year) || new Date().getFullYear();
+    const m = parseInt(month) || (new Date().getMonth() + 1);
+    const dateFrom = `${y}-${String(m).padStart(2, '0')}-01`;
+    const dateTo = new Date(y, m, 0).toISOString().split('T')[0];
+    const isDoctor = req.user.role === 'doctor';
+
+    let query, params;
+    if (isDoctor) {
+      query = `SELECT b.id, b.booking_date, b.booking_time, b.contact_name, b.status, s.name as service_name, b.doctor_id
+               FROM bookings b LEFT JOIN services s ON s.id = b.service_id
+               WHERE b.booking_date BETWEEN $1 AND $2
+               AND ((b.doctor_id IS NULL AND b.status = 'pending') OR b.doctor_id = $3)
+               AND b.status NOT IN ('cancelled')
+               ORDER BY b.booking_date, b.booking_time`;
+      params = [dateFrom, dateTo, req.user.id];
+    } else {
+      query = `SELECT b.id, b.booking_date, b.booking_time, b.contact_name, b.status, s.name as service_name, b.doctor_id
+               FROM bookings b LEFT JOIN services s ON s.id = b.service_id
+               WHERE b.booking_date BETWEEN $1 AND $2 AND b.status NOT IN ('cancelled')
+               ORDER BY b.booking_date, b.booking_time`;
+      params = [dateFrom, dateTo];
+    }
+
+    const [rows] = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get calendar error:', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// ============================================================
+// GET /api/bookings/my-calendar — Monthly calendar view (patient)
+// ============================================================
+router.get('/my-calendar', authMiddleware, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const y = parseInt(year) || new Date().getFullYear();
+    const m = parseInt(month) || (new Date().getMonth() + 1);
+    const dateFrom = `${y}-${String(m).padStart(2, '0')}-01`;
+    const dateTo = new Date(y, m, 0).toISOString().split('T')[0];
+
+    const [rows] = await pool.query(
+      `SELECT b.id, b.booking_date, b.booking_time, b.status, s.name as service_name
+       FROM bookings b LEFT JOIN services s ON s.id = b.service_id
+       WHERE b.user_id = $1 AND b.booking_date BETWEEN $2 AND $3 AND b.status NOT IN ('cancelled')
+       ORDER BY b.booking_date, b.booking_time`,
+      [req.user.id, dateFrom, dateTo]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Get my calendar error:', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาด' });
   }
 });

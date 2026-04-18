@@ -31,6 +31,13 @@ const NewsManagePage = lazy(() => import('./pages/NewsManagePage'));
 const NewsListPage = lazy(() => import('./pages/NewsListPage'));
 const NewsDetailPage = lazy(() => import('./pages/NewsDetailPage'));
 const ApiDocPage = lazy(() => import('./pages/ApiDocPage'));
+const DoctorsPage = lazy(() => import('./pages/DoctorsPage'));
+const AppointmentPage = lazy(() => import('./pages/AppointmentPage'));
+const ServicesPage = lazy(() => import('./pages/ServicesPage'));
+const PackagesPage = lazy(() => import('./pages/PackagesPage'));
+const MedicalCenterPage = lazy(() => import('./pages/MedicalCenterPage'));
+const PaymentPage = lazy(() => import('./pages/PaymentPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-section dark:bg-darkmode">
@@ -65,7 +72,14 @@ function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/doctors" element={<DoctorsPage />} />
+        <Route path="/appointment" element={<AppointmentPage />} />
+        <Route path="/services" element={<ServicesPage />} />
         <Route path="/services/:id" element={<ServiceDetailPage />} />
+        <Route path="/packages" element={<PackagesPage />} />
+        <Route path="/medical-center" element={<MedicalCenterPage />} />
+        <Route path="/payment" element={<PaymentPage />} />
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/booking/:id" element={<BookingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
