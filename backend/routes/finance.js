@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../database/db.js';
 import authMiddleware from '../middleware/auth.js';
 import { requireRole } from '../middleware/roleAuth.js';
+import { listAvailableDoctors } from '../utils/doctorAvailability.js';
 
 const router = Router();
 
@@ -10,18 +11,18 @@ const router = Router();
 // ============================================================
 router.get('/doctors', authMiddleware, async (req, res) => {
   try {
-    const [docs] = await pool.query(
-      `SELECT id, user_type,
-        CASE WHEN user_type = 'thai' THEN title_th ELSE title_en END as title,
-        CASE WHEN user_type = 'thai' THEN first_name_th ELSE first_name_en END as first_name,
-        CASE WHEN user_type = 'thai' THEN last_name_th ELSE last_name_en END as last_name
-       FROM users WHERE role = 'doctor' AND is_active = TRUE
-       ORDER BY CASE WHEN user_type = 'thai' THEN first_name_th ELSE first_name_en END`
-    );
-    const doctors = docs.map((d) => ({
-      id: d.id,
-      name: `${d.title || ''} ${d.first_name || ''} ${d.last_name || ''}`.trim(),
-    }));
+    const { service_id, branch = '', date = '', time = '', exclude_booking_id = '' } = req.query;
+    const parsedServiceId = service_id ? parseInt(service_id, 10) : null;
+    const parsedExcludeBookingId = exclude_booking_id ? parseInt(exclude_booking_id, 10) : null;
+
+    const { doctors } = await listAvailableDoctors({
+      serviceId: Number.isInteger(parsedServiceId) ? parsedServiceId : null,
+      branch,
+      date: date || null,
+      time: time || null,
+      excludeBookingId: Number.isInteger(parsedExcludeBookingId) ? parsedExcludeBookingId : null,
+    });
+
     res.json({ success: true, data: doctors });
   } catch (error) {
     console.error('Get doctors error:', error);

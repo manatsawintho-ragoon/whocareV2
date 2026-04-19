@@ -5,7 +5,7 @@ import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
 import {
   apiGetMyBookings, apiGetBalance, apiDeposit, apiGetTransactions,
-  apiUserRescheduleBooking, apiRequestRefund, apiGetBookingSlots
+  apiUserRescheduleBooking, apiRequestRefund, apiGetBookingSlots, apiGetMyCalendarBookings
 } from '../services/api';
 import Footer from '../components/Footer';
 
@@ -41,9 +41,15 @@ const MyBookingsPage = () => {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('bookings'); // bookings | wallet
+  const [tab, setTab] = useState('bookings'); // bookings | wallet | calendar
   const [depositAmount, setDepositAmount] = useState('');
   const [depositing, setDepositing] = useState(false);
+
+  // Calendar state
+  const [calViewMonth, setCalViewMonth] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() + 1 }; });
+  const [calBookings, setCalBookings] = useState([]);
+  const [calLoading, setCalLoading] = useState(false);
+  const [calSelectedDate, setCalSelectedDate] = useState(null);
 
   // Reschedule modal state
   const [rescheduleBooking, setRescheduleBooking] = useState(null);
@@ -56,6 +62,7 @@ const MyBookingsPage = () => {
 
   useEffect(() => { if (!authLoading && !user) navigate('/login'); }, [authLoading, user, navigate]);
   useEffect(() => { if (user) loadAll(); }, [user]);
+  useEffect(() => { if (tab === 'calendar' && user) loadMyCalendar(); }, [tab, calViewMonth]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -65,6 +72,15 @@ const MyBookingsPage = () => {
       if (balRes.success) setBalance(balRes.data.balance);
       if (txRes.success) setTransactions(txRes.data.transactions || txRes.data);
     } catch {} finally { setLoading(false); }
+  };
+
+  const loadMyCalendar = async () => {
+    setCalLoading(true);
+    try {
+      const r = await apiGetMyCalendarBookings(calViewMonth.y, calViewMonth.m);
+      if (r.success) setCalBookings(r.data);
+    } catch { setCalBookings([]); }
+    finally { setCalLoading(false); }
   };
 
   const handleDeposit = async () => {
@@ -168,7 +184,7 @@ const MyBookingsPage = () => {
 
           {/* Tabs */}
           <div className="flex gap-2 mb-6">
-            {[['bookings', 'การจองของฉัน', 'mdi:calendar-check'], ['wallet', 'กระเป๋าเงิน', 'mdi:wallet']].map(([k, l, ic]) => (
+            {[['bookings', 'การจองของฉัน', 'mdi:calendar-check'], ['calendar', 'ปฏิทิน', 'mdi:calendar-month'], ['wallet', 'กระเป๋าเงิน', 'mdi:wallet']].map(([k, l, ic]) => (
               <button key={k} onClick={() => setTab(k)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${tab === k ? 'bg-linear-to-r from-primary to-blue-400 text-white shadow-md' : 'bg-white dark:bg-darklight text-gray-500 border border-gray-200 dark:border-dark_border hover:border-blue-300'}`}>
                 <Icon icon={ic} width="16" />{l}
               </button>
@@ -267,6 +283,107 @@ const MyBookingsPage = () => {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* CALENDAR TAB */}
+          {tab === 'calendar' && (
+            <div className="bg-white dark:bg-darklight rounded-2xl border border-blue-100 dark:border-dark_border p-5">
+              <div className="flex items-center justify-between mb-5">
+                <button onClick={() => setCalViewMonth(p => p.m === 1 ? { y: p.y - 1, m: 12 } : { y: p.y, m: p.m - 1 })} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-darkmode cursor-pointer">
+                  <Icon icon="mdi:chevron-left" width="20" className="text-gray-400" />
+                </button>
+                <h3 className="text-base font-bold text-gray-800 dark:text-white">
+                  {new Date(calViewMonth.y, calViewMonth.m - 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+                </h3>
+                <button onClick={() => setCalViewMonth(p => p.m === 12 ? { y: p.y + 1, m: 1 } : { y: p.y, m: p.m + 1 })} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-darkmode cursor-pointer">
+                  <Icon icon="mdi:chevron-right" width="20" className="text-gray-400" />
+                </button>
+              </div>
+              {calLoading ? (
+                <div className="flex justify-center py-12"><Icon icon="mdi:loading" width="32" className="text-primary animate-spin" /></div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-7 gap-1 mb-1">
+                    {['อา','จ','อ','พ','พฤ','ศ','ส'].map(d => (
+                      <div key={d} className="text-center text-[11px] font-semibold text-gray-400 py-1">{d}</div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {(() => {
+                      const { y, m } = calViewMonth;
+                      const firstDay = new Date(y, m - 1, 1).getDay();
+                      const daysInMonth = new Date(y, m, 0).getDate();
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      const bookingsByDate = {};
+                      calBookings.forEach(b => {
+                        if (!bookingsByDate[b.booking_date]) bookingsByDate[b.booking_date] = [];
+                        bookingsByDate[b.booking_date].push(b);
+                      });
+                      const cells = [];
+                      for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+                      for (let d = 1; d <= daysInMonth; d++) {
+                        const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        const db = bookingsByDate[ds] || [];
+                        const isToday = ds === todayStr;
+                        const isSel = calSelectedDate === ds;
+                        cells.push(
+                          <button key={ds} onClick={() => setCalSelectedDate(isSel ? null : ds)}
+                            className={`relative p-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-h-[56px] flex flex-col items-center gap-0.5
+                              ${isSel ? 'bg-linear-to-r from-primary to-blue-400 text-white shadow-lg' : isToday ? 'bg-blue-50 dark:bg-blue-500/10 text-primary ring-1 ring-primary/30' : 'hover:bg-gray-50 dark:hover:bg-darkmode text-gray-700 dark:text-white'}`}>
+                            <span>{d}</span>
+                            <div className="flex flex-wrap justify-center gap-0.5">
+                              {db.slice(0, 4).map((bk, i) => (
+                                <div key={i} className={`w-1.5 h-1.5 rounded-full ${bk.status === 'pending' ? (isSel ? 'bg-yellow-200' : 'bg-yellow-400') : bk.status === 'confirmed' ? (isSel ? 'bg-blue-200' : 'bg-blue-500') : (isSel ? 'bg-green-200' : 'bg-green-500')}`} />
+                              ))}
+                              {db.length > 4 && <span className={`text-[8px] leading-none ${isSel ? 'text-white/80' : 'text-gray-400'}`}>+{db.length - 4}</span>}
+                            </div>
+                          </button>
+                        );
+                      }
+                      return cells;
+                    })()}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4 mt-4 pt-3 border-t border-gray-100 dark:border-dark_border">
+                    <span className="flex items-center gap-1.5 text-xs text-gray-400"><div className="w-2 h-2 rounded-full bg-yellow-400" />รอยืนยัน</span>
+                    <span className="flex items-center gap-1.5 text-xs text-gray-400"><div className="w-2 h-2 rounded-full bg-blue-500" />ยืนยันแล้ว</span>
+                    <span className="flex items-center gap-1.5 text-xs text-gray-400"><div className="w-2 h-2 rounded-full bg-green-500" />เสร็จสิ้น</span>
+                  </div>
+                  {calSelectedDate && (() => {
+                    const db = calBookings.filter(b => b.booking_date === calSelectedDate);
+                    const STATUS_COLORS_PATIENT = { pending: 'bg-yellow-100 text-yellow-600', confirmed: 'bg-blue-100 text-blue-600', completed: 'bg-green-100 text-green-600' };
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100 dark:border-dark_border">
+                        <h4 className="text-sm font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                          <Icon icon="mdi:calendar-check" width="16" className="text-primary" />
+                          {new Date(calSelectedDate + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          <span className="text-xs text-gray-400 font-normal">({db.length} นัด)</span>
+                        </h4>
+                        {db.length === 0 ? (
+                          <p className="text-center text-gray-400 text-sm py-4">ไม่มีนัดหมาย</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {db.map(b => (
+                              <div key={b.id} className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-500/5 rounded-xl">
+                                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-primary to-blue-400 flex items-center justify-center shrink-0">
+                                  <Icon icon="mdi:clock" width="18" className="text-white" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-primary">{b.booking_time} น.</p>
+                                  <p className="text-sm font-medium text-gray-800 dark:text-white truncate">{b.service_name}</p>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${STATUS_COLORS_PATIENT[b.status] || 'bg-gray-100 text-gray-500'}`}>
+                                  {STATUS_MAP[b.status]?.label || b.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
             </div>
           )}
         </div>

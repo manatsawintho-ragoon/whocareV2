@@ -8,6 +8,38 @@ import { useAuth, ROLE_CONFIG } from '../context/AuthContext';
 import { apiGetUsers, apiUpdateUserRole, apiToggleUserStatus, apiGetUserDetail, apiAdminUpdateUser } from '../services/api';
 
 const VALID_ROLES = ['super_admin', 'doctor', 'nurse', 'reception', 'accountant', 'manager', 'patient'];
+const DOCTOR_WEEKDAYS = [
+  { weekday: 1, label: 'จันทร์', defaultStart: '10:00', defaultEnd: '20:00' },
+  { weekday: 2, label: 'อังคาร', defaultStart: '10:00', defaultEnd: '20:00' },
+  { weekday: 3, label: 'พุธ', defaultStart: '10:00', defaultEnd: '20:00' },
+  { weekday: 4, label: 'พฤหัสบดี', defaultStart: '10:00', defaultEnd: '20:00' },
+  { weekday: 5, label: 'ศุกร์', defaultStart: '10:00', defaultEnd: '20:00' },
+  { weekday: 6, label: 'เสาร์', defaultStart: '11:00', defaultEnd: '20:00' },
+  { weekday: 0, label: 'อาทิตย์', defaultStart: '11:00', defaultEnd: '20:00' },
+];
+
+const cloneUserData = (userData) => JSON.parse(JSON.stringify(userData));
+
+const buildDoctorSchedules = (schedules = []) => {
+  const scheduleMap = new Map(
+    (schedules || []).map((schedule) => [
+      Number(schedule.weekday),
+      {
+        weekday: Number(schedule.weekday),
+        start_time: String(schedule.start_time || '').slice(0, 5),
+        end_time: String(schedule.end_time || '').slice(0, 5),
+        is_active: Boolean(schedule.is_active),
+      },
+    ])
+  );
+
+  return DOCTOR_WEEKDAYS.map((day) => scheduleMap.get(day.weekday) || {
+    weekday: day.weekday,
+    start_time: day.defaultStart,
+    end_time: day.defaultEnd,
+    is_active: false,
+  });
+};
 
 const AdminUsersPage = () => {
   const navigate = useNavigate();
@@ -24,6 +56,7 @@ const AdminUsersPage = () => {
   const [editForm, setEditForm] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [serviceOptions, setServiceOptions] = useState([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -155,8 +188,16 @@ const AdminUsersPage = () => {
       if (result.success) {
         const userData = result.data.user;
         if (userData.birth_date) userData.birth_date = userData.birth_date.split('T')[0];
-        setSelectedUser(userData);
-        setEditForm({ ...userData });
+        const doctorProfile = result.data.doctor_profile || { service_ids: [], services: [], schedules: [] };
+        const normalizedUser = {
+          ...userData,
+          doctor_service_ids: doctorProfile.service_ids || [],
+          doctor_services: doctorProfile.services || [],
+          doctor_schedules: buildDoctorSchedules(doctorProfile.schedules || []),
+        };
+        setServiceOptions(result.data.available_services || []);
+        setSelectedUser(normalizedUser);
+        setEditForm(cloneUserData(normalizedUser));
       }
     } catch {
       Swal.fire({ title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้', icon: 'error', confirmButtonColor: '#3b82f6' });
@@ -179,6 +220,28 @@ const AdminUsersPage = () => {
     setEditForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const toggleDoctorService = (serviceId) => {
+    setEditForm((prev) => {
+      const currentIds = prev.doctor_service_ids || [];
+      const exists = currentIds.includes(serviceId);
+      return {
+        ...prev,
+        doctor_service_ids: exists
+          ? currentIds.filter((id) => id !== serviceId)
+          : [...currentIds, serviceId],
+      };
+    });
+  };
+
+  const updateDoctorSchedule = (weekday, field, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      doctor_schedules: (prev.doctor_schedules || []).map((schedule) => (
+        schedule.weekday === weekday ? { ...schedule, [field]: value } : schedule
+      )),
+    }));
+  };
+
   const saveUserEdit = async () => {
     setSaving(true);
     try {
@@ -186,8 +249,16 @@ const AdminUsersPage = () => {
       if (result.success) {
         const updated = result.data.user;
         if (updated.birth_date) updated.birth_date = updated.birth_date.split('T')[0];
-        setSelectedUser(updated);
-        setEditForm({ ...updated });
+        const doctorProfile = result.data.doctor_profile || { service_ids: [], services: [], schedules: [] };
+        const normalizedUpdated = {
+          ...updated,
+          doctor_service_ids: doctorProfile.service_ids || [],
+          doctor_services: doctorProfile.services || [],
+          doctor_schedules: buildDoctorSchedules(doctorProfile.schedules || []),
+        };
+        setServiceOptions(result.data.available_services || []);
+        setSelectedUser(normalizedUpdated);
+        setEditForm(cloneUserData(normalizedUpdated));
         setEditMode(false);
         fetchUsers(pagination.page);
         Swal.fire({ title: 'บันทึกสำเร็จ', icon: 'success', confirmButtonColor: '#3b82f6', timer: 1500, timerProgressBar: true });
@@ -403,7 +474,7 @@ const AdminUsersPage = () => {
       {detailOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeDetail} />
-          <div className="relative bg-white dark:bg-darklight rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+          <div className="relative bg-white dark:bg-darklight rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-dark_border shrink-0">
               <h2 className="text-lg font-bold text-midnight_text dark:text-white flex items-center gap-2">
@@ -483,6 +554,50 @@ const AdminUsersPage = () => {
                       </div>
                     ))}
                   </div>
+
+                  {selectedUser.role === 'doctor' && (
+                    <div className="space-y-3 mt-5">
+                      <div className="rounded-xl bg-section dark:bg-darkmode/50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Icon icon="mdi:medical-bag" width="18" className="text-primary" />
+                          <h4 className="text-sm font-bold text-midnight_text dark:text-white">บริการที่รับ</h4>
+                        </div>
+                        {selectedUser.doctor_services?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedUser.doctor_services.map((service) => (
+                              <span key={service.service_id} className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                                {service.name} {service.branch ? `• ${service.branch}` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-grey dark:text-white/40">ยังไม่ได้กำหนดบริการที่หมอรับ</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl bg-section dark:bg-darkmode/50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Icon icon="mdi:calendar-clock" width="18" className="text-primary" />
+                          <h4 className="text-sm font-bold text-midnight_text dark:text-white">ตารางงานรายสัปดาห์</h4>
+                        </div>
+                        {(selectedUser.doctor_schedules || []).some((schedule) => schedule.is_active) ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {(selectedUser.doctor_schedules || []).filter((schedule) => schedule.is_active).map((schedule) => {
+                              const weekday = DOCTOR_WEEKDAYS.find((day) => day.weekday === schedule.weekday);
+                              return (
+                                <div key={schedule.weekday} className="flex items-center justify-between rounded-lg bg-white dark:bg-darklight px-3 py-2">
+                                  <span className="text-sm font-medium text-midnight_text dark:text-white">{weekday?.label || schedule.weekday}</span>
+                                  <span className="text-xs text-grey dark:text-white/50">{schedule.start_time} - {schedule.end_time}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-grey dark:text-white/40">ยังไม่ได้กำหนดตารางงานของหมอ</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : editForm ? (
                 /* ===== Edit Mode ===== */
@@ -595,6 +710,78 @@ const AdminUsersPage = () => {
                       placeholder="เช่น แพ้เพนนิซิลิน"
                       className="w-full px-3 py-2.5 bg-section dark:bg-darkmode border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white placeholder:text-grey/50 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
                   </div>
+
+                  {editForm.role === 'doctor' && (
+                    <div className="pt-4 mt-2 border-t border-border dark:border-dark_border space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Icon icon="mdi:medical-bag" width="18" className="text-primary" />
+                          <h4 className="text-sm font-bold text-midnight_text dark:text-white">บริการที่หมอรับ</h4>
+                        </div>
+                        {serviceOptions.length === 0 ? (
+                          <p className="text-sm text-grey dark:text-white/40">ยังไม่มีบริการให้เลือก</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {serviceOptions.map((service) => {
+                              const checked = (editForm.doctor_service_ids || []).includes(service.id);
+                              return (
+                                <label key={service.id} className={`flex items-start gap-3 rounded-xl border px-3 py-3 cursor-pointer transition-colors ${checked ? 'border-primary bg-primary/5' : 'border-border dark:border-dark_border bg-section dark:bg-darkmode/50'}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleDoctorService(service.id)}
+                                    className="mt-0.5"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-semibold text-midnight_text dark:text-white">{service.name}</span>
+                                    <span className="block text-xs text-grey dark:text-white/40">{service.branch || 'ไม่ระบุสาขา'}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Icon icon="mdi:calendar-clock" width="18" className="text-primary" />
+                          <h4 className="text-sm font-bold text-midnight_text dark:text-white">ตารางงานรายสัปดาห์</h4>
+                        </div>
+                        <div className="space-y-2">
+                          {(editForm.doctor_schedules || []).map((schedule) => {
+                            const weekday = DOCTOR_WEEKDAYS.find((day) => day.weekday === schedule.weekday);
+                            return (
+                              <div key={schedule.weekday} className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr] gap-2 rounded-xl bg-section dark:bg-darkmode/50 p-3">
+                                <label className="flex items-center gap-2 text-sm font-medium text-midnight_text dark:text-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={schedule.is_active}
+                                    onChange={(e) => updateDoctorSchedule(schedule.weekday, 'is_active', e.target.checked)}
+                                  />
+                                  {weekday?.label || schedule.weekday}
+                                </label>
+                                <input
+                                  type="time"
+                                  value={schedule.start_time}
+                                  disabled={!schedule.is_active}
+                                  onChange={(e) => updateDoctorSchedule(schedule.weekday, 'start_time', e.target.value)}
+                                  className="w-full px-3 py-2.5 bg-white dark:bg-darklight border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all disabled:opacity-50"
+                                />
+                                <input
+                                  type="time"
+                                  value={schedule.end_time}
+                                  disabled={!schedule.is_active}
+                                  onChange={(e) => updateDoctorSchedule(schedule.weekday, 'end_time', e.target.value)}
+                                  className="w-full px-3 py-2.5 bg-white dark:bg-darklight border border-border dark:border-dark_border rounded-xl text-sm text-midnight_text dark:text-white focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all disabled:opacity-50"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -604,7 +791,7 @@ const AdminUsersPage = () => {
               <div className="flex items-center gap-3 px-6 py-4 border-t border-border dark:border-dark_border shrink-0">
                 {editMode ? (
                   <>
-                    <button onClick={() => { setEditMode(false); setEditForm({ ...selectedUser }); }}
+                    <button onClick={() => { setEditMode(false); setEditForm(cloneUserData(selectedUser)); }}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border dark:border-dark_border text-midnight_text dark:text-white font-semibold text-sm hover:bg-section dark:hover:bg-darkmode transition-colors cursor-pointer">
                       ยกเลิก
                     </button>

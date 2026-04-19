@@ -47,6 +47,7 @@ const BookingPage = () => {
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [doctors, setDoctors] = useState([]);
+  const [doctorLoading, setDoctorLoading] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [balance, setBalance] = useState(0);
 
@@ -57,7 +58,7 @@ const BookingPage = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    fetchService(); fetchDoctors(); fetchBalance();
+    fetchService(); fetchBalance();
     return () => clearLockInterval();
   }, [id]);
 
@@ -78,12 +79,48 @@ const BookingPage = () => {
     }
   }, [user]);
 
-  useEffect(() => { if (selectedDate && service) fetchSlots(selectedDate); }, [selectedDate]);
+  useEffect(() => {
+    if (!service) return;
+    const params = { service_id: parseInt(id, 10), branch: service.branch || '' };
+    if (selectedDate) params.date = selectedDate;
+    if (selectedTime) params.time = selectedTime;
+    fetchDoctors(params);
+  }, [id, service, selectedDate, selectedTime]);
+
+  useEffect(() => {
+    if (selectedDate && service) fetchSlots(selectedDate, selectedDoctor?.id || null);
+  }, [selectedDate, selectedDoctor, service]);
+
+  useEffect(() => {
+    if (selectedDoctor && !doctors.some((doctor) => doctor.id === selectedDoctor.id)) {
+      setSelectedDoctor(null);
+    }
+  }, [doctors, selectedDoctor]);
+
+  useEffect(() => {
+    if (!selectedTime) return;
+    const currentSlot = slots.find((slot) => slot.time === selectedTime);
+    if (!currentSlot || !['available', 'my_lock'].includes(currentSlot.status)) {
+      setSelectedTime('');
+      releaseLock();
+    }
+  }, [slots, selectedTime, releaseLock]);
 
   const fetchService = async () => { setLoading(true); try { const r = await apiGetPublicServiceById(id); if (r.success) setService(r.data); else navigate('/'); } catch { navigate('/'); } finally { setLoading(false); } };
-  const fetchDoctors = async () => { try { const r = await apiGetDoctors(); if (r.success) setDoctors(r.data); } catch {} };
+  const fetchDoctors = async (params = {}) => {
+    setDoctorLoading(true);
+    try {
+      const r = await apiGetDoctors(params);
+      if (r.success) setDoctors(r.data || []);
+      else setDoctors([]);
+    } catch {
+      setDoctors([]);
+    } finally {
+      setDoctorLoading(false);
+    }
+  };
   const fetchBalance = async () => { try { const r = await apiGetBalance(); if (r.success) setBalance(r.data.balance); } catch {} };
-  const fetchSlots = async (date) => { setSlotsLoading(true); try { const r = await apiGetBookingSlots(id, date); if (r.success) setSlots(r.data.slots); } catch { setSlots([]); } finally { setSlotsLoading(false); } };
+  const fetchSlots = async (date, doctorId = null) => { setSlotsLoading(true); try { const r = await apiGetBookingSlots(id, date, doctorId); if (r.success) setSlots(r.data.slots); else setSlots([]); } catch { setSlots([]); } finally { setSlotsLoading(false); } };
 
   const clearLockInterval = () => { if (lockIntervalRef.current) { clearInterval(lockIntervalRef.current); lockIntervalRef.current = null; } };
   const releaseLock = useCallback(async () => { if (currentLockRef.current) { try { await apiUnlockSlot(currentLockRef.current); } catch {} currentLockRef.current = null; } clearLockInterval(); }, []);
@@ -148,15 +185,21 @@ const BookingPage = () => {
   const discountPct = service.is_promotion && origPrice > currPrice ? Math.round((1 - currPrice / origPrice) * 100) : null;
   const depositAmount = Math.ceil(currPrice / 2);
   const doctorName = selectedDoctor?.name || 'ไม่ระบุ (แพทย์เวร)';
+  const doctorHelperText = selectedDate && selectedTime
+    ? 'แสดงเฉพาะแพทย์ที่รับบริการนี้และว่างในช่วงเวลาที่เลือก'
+    : selectedDate
+      ? 'แสดงเฉพาะแพทย์ที่รับบริการนี้และมีตารางงานในวันที่เลือก'
+      : 'แสดงแพทย์ที่รับบริการนี้ทั้งหมด';
 
   const slotStyle = (time, status) => {
     if (time === selectedTime) return 'bg-linear-to-r from-primary to-blue-400 text-white border-transparent shadow-lg ring-2 ring-blue-300/40 scale-105';
     if (status === 'available' || status === 'my_lock') return 'bg-white dark:bg-darklight text-gray-700 dark:text-white border-gray-200 dark:border-dark_border hover:border-blue-400 hover:text-primary hover:shadow-md cursor-pointer';
     if (status === 'booked') return 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed line-through';
     if (status === 'locking') return 'bg-amber-50 dark:bg-amber-500/5 text-amber-500 border-amber-200 dark:border-amber-500/20 cursor-not-allowed';
+    if (status === 'unavailable_doctor') return 'bg-rose-50 dark:bg-rose-500/5 text-rose-400 border-rose-200 dark:border-rose-500/20 cursor-not-allowed';
     return 'bg-gray-50 dark:bg-gray-800/50 text-gray-300 border-gray-100 dark:border-gray-800 cursor-not-allowed';
   };
-  const slotLabel = (status) => ({ booked: 'จองแล้ว', locking: 'กำลังจอง', past: 'ผ่านไปแล้ว' }[status] || null);
+  const slotLabel = (status) => ({ booked: 'จองแล้ว', locking: 'กำลังจอง', past: 'ผ่านไปแล้ว', unavailable_doctor: 'ไม่มีหมอว่าง' }[status] || null);
 
   // SUCCESS
   if (step > TOTAL_STEPS) return (
@@ -283,6 +326,7 @@ const BookingPage = () => {
                     <div className="w-7 h-7 rounded-lg bg-linear-to-br from-teal-400 to-emerald-500 flex items-center justify-center"><Icon icon="mdi:doctor" width="14" className="text-white" /></div>
                     เลือกแพทย์
                   </h3>
+                  <p className="text-xs text-gray-400 mb-3 ml-9">{doctorHelperText}</p>
                   <div className="relative">
                     <Icon icon="mdi:doctor" width="18" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
                     <select
@@ -294,7 +338,7 @@ const BookingPage = () => {
                       }}
                       className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-200 dark:border-dark_border bg-white dark:bg-darkmode text-sm text-gray-700 dark:text-white appearance-none cursor-pointer focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-500/20 transition-all"
                     >
-                      <option value="">ไม่ระบุ (ทางคลินิคเลือกให้)</option>
+                      <option value="">{selectedDate && selectedTime ? 'ไม่ระบุ (ให้คลินิกเลือกจากหมอที่ว่าง)' : 'ไม่ระบุ (ให้คลินิกเลือกภายหลัง)'}</option>
                       {doctors.map(doc => (
                         <option key={doc.id} value={String(doc.id)}>
                           {doc.name}
@@ -303,6 +347,13 @@ const BookingPage = () => {
                     </select>
                     <Icon icon="mdi:chevron-down" width="20" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
+                  {doctorLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-2 ml-1">
+                      <Icon icon="mdi:loading" width="14" className="animate-spin" />กำลังค้นหาแพทย์ที่ว่าง...
+                    </div>
+                  ) : doctors.length === 0 ? (
+                    <p className="text-xs text-rose-500 mt-2 ml-1">ไม่พบแพทย์ที่รับบริการนี้หรือว่างในเงื่อนไขที่เลือก</p>
+                  ) : null}
                 </div>
 
                 {/* Date */}
@@ -341,7 +392,7 @@ const BookingPage = () => {
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                         {slots.map(({ time, status }) => (
                           <div key={time} className="relative">
-                            <button onClick={() => handleSelectTime(time, status)} disabled={status === 'booked' || status === 'locking' || status === 'past'} className={`w-full py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${slotStyle(time, status)}`}>{time}</button>
+                            <button onClick={() => handleSelectTime(time, status)} disabled={status === 'booked' || status === 'locking' || status === 'past' || status === 'unavailable_doctor'} className={`w-full py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${slotStyle(time, status)}`}>{time}</button>
                             {slotLabel(status) && <span className={`block text-center text-[9px] mt-0.5 font-medium ${status === 'booked' ? 'text-gray-400' : 'text-amber-500'}`}>{slotLabel(status)}</span>}
                           </div>
                         ))}
@@ -352,6 +403,7 @@ const BookingPage = () => {
                       <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-linear-to-r from-primary to-blue-400"></span>เลือกแล้ว</span>
                       <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>กำลังจอง</span>
                       <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gray-200"></span>จองแล้ว</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-100 border border-rose-300"></span>ไม่มีหมอว่าง</span>
                     </div>
                   </div>
                 )}
@@ -402,7 +454,25 @@ const BookingPage = () => {
               {step < TOTAL_STEPS ? (
                 <button onClick={nextStep} className="inline-flex items-center gap-2 bg-linear-to-r from-primary to-blue-400 hover:from-blue-600 hover:to-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl shadow-md shadow-blue-200/50 cursor-pointer text-sm">ถัดไป<Icon icon="mdi:arrow-right" width="16" /></button>
               ) : (
-                <button onClick={handleSubmit} disabled={submitting || balance < depositAmount} className="inline-flex items-center gap-2 bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-green-200/50 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <button onClick={async () => {
+                    if (submitting) return;
+                    if (balance < depositAmount) {
+                      const r = await Swal.fire({
+                        icon: 'warning',
+                        title: 'ยอดเงินไม่เพียงพอ',
+                        html: `ต้องใช้มัดจำ <b>฿${formatPrice(depositAmount)}</b> ขณะนี้มี <b>฿${formatPrice(balance)}</b>`,
+                        showCancelButton: true,
+                        confirmButtonText: 'เติมเงิน',
+                        cancelButtonText: 'ยกเลิก',
+                        confirmButtonColor: '#3b82f6'
+                      });
+                      if (r.isConfirmed) navigate('/payment');
+                      return;
+                    }
+                    handleSubmit();
+                  }}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-2 bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-green-200/50 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                   {submitting ? <><Icon icon="mdi:loading" width="18" className="animate-spin" />กำลังจอง...</> : <><Icon icon="mdi:wallet-plus" width="18" />ยืนยัน — หักมัดจำ ฿{formatPrice(depositAmount)}</>}
                 </button>
               )}

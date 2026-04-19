@@ -339,9 +339,11 @@ PUT    http://localhost:5000/api/bookings/1/status
 Header: Authorization: Bearer <token>
 Body:
 {
-  "status": "confirmed"
+  "status": "confirmed",
+  "doctor_id": 5
 }
 # (values: pending | confirmed | completed | cancelled)
+# doctor_id: optional whenแพทย์กดยืนยันเอง ระบบจะกำหนดให้เป็นตัวเองอัตโนมัติ
 
 # Staff: reschedule a booking to a new date/time
 PUT    http://localhost:5000/api/bookings/1/reschedule   (staff)

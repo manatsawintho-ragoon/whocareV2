@@ -10,6 +10,48 @@ const router = Router();
 const SALT_ROUNDS = 12;
 const VALID_ROLES = ['super_admin', 'doctor', 'nurse', 'reception', 'accountant', 'manager', 'patient'];
 
+const normalizeTimeString = (time) => String(time || '').slice(0, 5);
+
+const getActiveServices = async () => {
+  const [services] = await pool.query(
+    `SELECT id, name, branch
+     FROM services
+     WHERE is_active = TRUE
+     ORDER BY branch ASC, name ASC`
+  );
+  return services;
+};
+
+const getDoctorProfileData = async (doctorId) => {
+  const [services] = await pool.query(
+    `SELECT dsa.service_id, s.name, s.branch
+     FROM doctor_service_assignments dsa
+     INNER JOIN services s ON s.id = dsa.service_id
+     WHERE dsa.doctor_id = $1 AND dsa.is_active = TRUE
+     ORDER BY s.branch ASC, s.name ASC`,
+    [doctorId]
+  );
+
+  const [schedules] = await pool.query(
+    `SELECT weekday, start_time::text as start_time, end_time::text as end_time
+     FROM doctor_weekly_schedules
+     WHERE doctor_id = $1 AND is_active = TRUE
+     ORDER BY weekday ASC`,
+    [doctorId]
+  );
+
+  return {
+    service_ids: services.map((service) => service.service_id),
+    services,
+    schedules: schedules.map((schedule) => ({
+      weekday: schedule.weekday,
+      start_time: normalizeTimeString(schedule.start_time),
+      end_time: normalizeTimeString(schedule.end_time),
+      is_active: true,
+    })),
+  };
+};
+
 // ============================================================
 // GET /api/admin/users — List all users (Super Admin, Manager)
 // ============================================================
@@ -188,9 +230,15 @@ router.get('/users/:id', requireRole('super_admin'), async (req, res) => {
     }
 
     const { password_hash, ...safeUser } = users[0];
+    const data = { user: safeUser };
+    if (safeUser.role === 'doctor') {
+      data.doctor_profile = await getDoctorProfileData(id);
+      data.available_services = await getActiveServices();
+    }
+
     res.json({
       success: true,
-      data: { user: safeUser },
+      data,
     });
   } catch (error) {
     console.error('Get user detail error:', error);
@@ -202,17 +250,21 @@ router.get('/users/:id', requireRole('super_admin'), async (req, res) => {
 // PUT /api/admin/users/:userType/:id — Update user profile (admin)
 // ============================================================
 router.put('/users/:id', requireRole('super_admin'), async (req, res) => {
+  const client = await pool.getConnection();
   try {
     const { id } = req.params;
+    await client.query('BEGIN');
 
     // Get user to determine type
-    const [currentUser] = await pool.query(`SELECT user_type FROM users WHERE id = $1`, [id]);
-    if (currentUser.length === 0) {
+    const currentUser = await client.query(`SELECT user_type, role FROM users WHERE id = $1 FOR UPDATE`, [id]);
+    if (currentUser.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'ไม่พบผู้ใช้' });
     }
-    const userType = currentUser[0].user_type;
+    const userType = currentUser.rows[0].user_type;
+    const role = currentUser.rows[0].role;
 
-    const { birth_date, blood_type, allergies, phone } = req.body;
+    const { birth_date, blood_type, allergies, phone, doctor_service_ids, doctor_schedules } = req.body;
 
     if (userType === 'thai') {
       const { title_th, first_name_th, last_name_th } = req.body;
@@ -221,7 +273,7 @@ router.put('/users/:id', requireRole('super_admin'), async (req, res) => {
       if (['นาย', 'นพ.'].includes(title_th)) autoGender = 'ชาย';
       else if (['นาง', 'นางสาว', 'พญ.'].includes(title_th)) autoGender = 'หญิง';
 
-      await pool.query(
+      await client.query(
         `UPDATE users SET title_th = $1, first_name_th = $2, last_name_th = $3, birth_date = $4, gender = $5, blood_type = $6, allergies = $7, phone = $8 WHERE id = $9`,
         [title_th || '', first_name_th, last_name_th, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, id]
       );
@@ -231,31 +283,92 @@ router.put('/users/:id', requireRole('super_admin'), async (req, res) => {
       if (['Mr.', 'Dr.'].includes(title_en)) autoGender = 'Male';
       else if (['Mrs.', 'Ms.'].includes(title_en)) autoGender = 'Female';
 
-      await pool.query(
+      await client.query(
         `UPDATE users SET title_en = $1, first_name_en = $2, last_name_en = $3, nationality = $4, birth_date = $5, gender = $6, blood_type = $7, allergies = $8, phone = $9 WHERE id = $10`,
         [title_en || '', first_name_en, last_name_en, nationality || null, birth_date || null, autoGender, blood_type || null, allergies || null, phone || null, id]
       );
     }
 
+    if (role === 'doctor') {
+      const parsedServiceIds = Array.isArray(doctor_service_ids)
+        ? [...new Set(doctor_service_ids.map((value) => parseInt(value, 10)).filter((value) => Number.isInteger(value) && value > 0))]
+        : [];
+
+      if (parsedServiceIds.length > 0) {
+        const serviceResult = await client.query(
+          `SELECT COUNT(*) as total FROM services WHERE id = ANY($1::int[]) AND is_active = TRUE`,
+          [parsedServiceIds]
+        );
+        if (parseInt(serviceResult.rows[0].total, 10) !== parsedServiceIds.length) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, message: 'มีบริการที่เลือกไม่ถูกต้องหรือถูกปิดใช้งาน' });
+        }
+      }
+
+      const scheduleMap = new Map();
+      if (Array.isArray(doctor_schedules)) {
+        doctor_schedules.forEach((item) => {
+          const weekday = parseInt(item?.weekday, 10);
+          const isActive = Boolean(item?.is_active);
+          const startTime = normalizeTimeString(item?.start_time);
+          const endTime = normalizeTimeString(item?.end_time);
+
+          if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !isActive) return;
+          if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) return;
+          if (startTime >= endTime) return;
+
+          scheduleMap.set(weekday, { weekday, start_time: startTime, end_time: endTime, is_active: true });
+        });
+      }
+
+      await client.query(`DELETE FROM doctor_service_assignments WHERE doctor_id = $1`, [id]);
+      for (const serviceId of parsedServiceIds) {
+        await client.query(
+          `INSERT INTO doctor_service_assignments (doctor_id, service_id, is_active, created_at, updated_at)
+           VALUES ($1, $2, TRUE, NOW(), NOW())`,
+          [id, serviceId]
+        );
+      }
+
+      await client.query(`DELETE FROM doctor_weekly_schedules WHERE doctor_id = $1`, [id]);
+      for (const schedule of scheduleMap.values()) {
+        await client.query(
+          `INSERT INTO doctor_weekly_schedules (doctor_id, weekday, start_time, end_time, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, TRUE, NOW(), NOW())`,
+          [id, schedule.weekday, schedule.start_time, schedule.end_time]
+        );
+      }
+    }
+
     // Audit log
-    await pool.query(
+    await client.query(
       `INSERT INTO audit_logs (actor_id, action, target_table, target_id, new_value, ip_address)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [req.user.id, 'edit_user_profile', 'users', id, JSON.stringify(req.body), req.ip]
     );
 
+    await client.query('COMMIT');
+
     // Fetch updated user
     const [updated] = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
     const { password_hash, ...safeUser } = updated[0];
+    const data = { user: safeUser };
+    if (safeUser.role === 'doctor') {
+      data.doctor_profile = await getDoctorProfileData(id);
+      data.available_services = await getActiveServices();
+    }
 
     res.json({
       success: true,
       message: 'อัปเดตข้อมูลผู้ใช้สำเร็จ',
-      data: { user: safeUser },
+      data,
     });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Admin update user error:', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในระบบ' });
+  } finally {
+    client.release();
   }
 });
 
